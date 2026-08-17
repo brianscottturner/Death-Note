@@ -54,9 +54,14 @@ Each round has four phases, in order:
    the final guess.
 4. **Information** — L (if not sitting out) is shown 4 suspects, one of
    whom is truly Kira. Then Kira and the Follower wake, may swap the Death
-   Note (not twice in a row), and may make any number of kill guesses
-   (guessing a target's secret first + last name). Two wrong guesses on
-   the same player makes them immune for the rest of the game.
+   Note (not twice in a row), and may make kill guesses (guessing a
+   target's secret first + last name) up to **2 successful kills per
+   Information Phase** — the form locks once that cap is hit, though wrong
+   guesses don't count against it. Two wrong guesses on the same player
+   makes them immune for the rest of the game. Kira and the Follower also
+   know each other's identity from the very start (shown on the role
+   reveal screen), and get a private text chat during this phase, visible
+   only on their two devices.
 
 ## Win conditions
 

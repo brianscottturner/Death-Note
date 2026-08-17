@@ -21,6 +21,15 @@ function obj(x) { return x || {}; }
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+function renderChatLog(chat, players) {
+  const messages = Object.values(chat).sort((a, b) => a.ts - b.ts);
+  if (messages.length === 0) return '<p class="hint">No messages yet.</p>';
+  return messages.map(m => {
+    const sender = players[m.senderId];
+    const label = sender ? sender.label : '?';
+    return `<p class="chat-msg"><strong>${label}:</strong> ${esc(m.text)}</p>`;
+  }).join('');
+}
 function generateRoomCode() {
   let s = '';
   for (let i = 0; i < 6; i++) s += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
@@ -310,6 +319,16 @@ function renderReveal(room) {
     roleDesc = "You're on L's side. Vote wisely and help complete missions to expose Kira.";
   }
 
+  let partnerHtml = '';
+  const players = obj(room.players);
+  if (mySecret.role === 'Kira' && room.followerPlayerId && players[room.followerPlayerId]) {
+    const f = players[room.followerPlayerId];
+    partnerHtml = `<div class="role-desc">Your Follower is <strong>Investigator ${f.label} — ${esc(f.name)}</strong>.</div>`;
+  } else if (mySecret.role === 'KiraFollower' && room.kiraPlayerId && players[room.kiraPlayerId]) {
+    const k = players[room.kiraPlayerId];
+    partnerHtml = `<div class="role-desc">Kira is <strong>Investigator ${k.label} — ${esc(k.name)}</strong>.</div>`;
+  }
+
   const ready = !!mySecret.ready;
   let html = `<h2>Your Secret Role</h2>
     <div class="card">
@@ -317,11 +336,11 @@ function renderReveal(room) {
         <div class="role-name">${roleName}</div>
         <div class="role-names">Your secret name: <strong>${mySecret.firstName} ${mySecret.lastName}</strong></div>
         <div class="role-desc">${roleDesc}</div>
+        ${partnerHtml}
       </div>`;
   if (!ready) {
     html += `<button id="btn-ready" class="primary">I've Memorized My Role — Ready</button>`;
   } else {
-    const players = obj(room.players);
     const secrets = obj(room.secrets);
     const readyCount = Object.values(secrets).filter(s => s.ready).length;
     html += `<p class="hint">Waiting for everyone else... (${readyCount}/${Object.keys(players).length} ready)</p>`;
@@ -695,6 +714,8 @@ function renderInformationPhase(room) {
   const prevKillTarget = el('kill-target') ? el('kill-target').value : null;
   const prevKillFirst = el('kill-first') ? el('kill-first').value : null;
   const prevKillLast = el('kill-last') ? el('kill-last').value : null;
+  const prevChatInput = el('kira-chat-input') ? el('kira-chat-input').value : null;
+  const prevChatFocused = document.activeElement && document.activeElement.id === 'kira-chat-input';
 
   let html = `<h2>Information Phase</h2><div class="card pass-card">`;
 
@@ -727,18 +748,32 @@ function renderInformationPhase(room) {
       else html += `<p class="hint">The Death Note was swapped last time — cannot swap again this round.</p>`;
 
       html += `<hr><p><strong>Write a name in the Death Note?</strong></p>`;
-      const targets = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && !secrets[id].immune && id !== room.kiraPlayerId && id !== room.followerPlayerId);
-      if (targets.length === 0) {
-        html += `<p class="hint">No valid targets remain.</p>`;
+      const killsUsed = info.killsThisPhase || 0;
+      if (killsUsed >= 2) {
+        html += `<p class="hint">You've used both kills for this Information Phase.</p>`;
       } else {
-        html += `<label>Target</label>
-          <select id="kill-target">${targets.map(id => `<option value="${id}">${players[id].label} — ${esc(players[id].name)}</option>`).join('')}</select>
-          <label>Guess first name</label>
-          <select id="kill-first">${FIRST_NAMES.map(n => `<option value="${n}">${n}</option>`).join('')}</select>
-          <label>Guess last name</label>
-          <select id="kill-last">${LAST_NAMES.map(n => `<option value="${n}">${n}</option>`).join('')}</select>
-          <button id="btn-kill-submit" class="danger">Submit Guess</button>`;
+        const targets = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && !secrets[id].immune && id !== room.kiraPlayerId && id !== room.followerPlayerId);
+        if (targets.length === 0) {
+          html += `<p class="hint">No valid targets remain.</p>`;
+        } else {
+          html += `<label>Target</label>
+            <select id="kill-target">${targets.map(id => `<option value="${id}">${players[id].label} — ${esc(players[id].name)}</option>`).join('')}</select>
+            <label>Guess first name</label>
+            <select id="kill-first">${FIRST_NAMES.map(n => `<option value="${n}">${n}</option>`).join('')}</select>
+            <label>Guess last name</label>
+            <select id="kill-last">${LAST_NAMES.map(n => `<option value="${n}">${n}</option>`).join('')}</select>
+            <button id="btn-kill-submit" class="danger">Submit Guess</button>
+            <p class="hint">${killsUsed === 1 ? '1 kill used — 1 remaining this phase.' : 'Up to 2 successful kills allowed this phase.'}</p>`;
+        }
       }
+
+      html += `<hr><p><strong>Chat with your ${myPlayerId === room.kiraPlayerId ? 'Follower' : 'Kira'}</strong></p>
+        <div class="chat-log" id="kira-chat-log">${renderChatLog(obj(info.chat), players)}</div>
+        <div class="chat-input-row">
+          <input type="text" id="kira-chat-input" placeholder="Message..." maxlength="200">
+          <button id="btn-kira-chat-send" class="secondary">Send</button>
+        </div>`;
+
       html += `<hr><button id="btn-info-finish" class="primary">Finished — Continue</button>`;
     } else {
       html += `<p class="waiting">Kira and the Follower are strategizing. Everyone else, keep your eyes closed...</p>`;
@@ -757,6 +792,28 @@ function renderInformationPhase(room) {
     if (targetSel && prevKillTarget && [...targetSel.options].some(o => o.value === prevKillTarget)) targetSel.value = prevKillTarget;
     if (firstSel && prevKillFirst) firstSel.value = prevKillFirst;
     if (lastSel && prevKillLast) lastSel.value = prevKillLast;
+
+    const chatLog = el('kira-chat-log');
+    if (chatLog) chatLog.scrollTop = chatLog.scrollHeight;
+    const chatInput = el('kira-chat-input');
+    if (chatInput) {
+      if (prevChatInput) chatInput.value = prevChatInput;
+      if (prevChatFocused) {
+        chatInput.focus();
+        chatInput.setSelectionRange(chatInput.value.length, chatInput.value.length);
+      }
+    }
+    const chatSendBtn = el('btn-kira-chat-send');
+    if (chatSendBtn) {
+      const sendChat = () => {
+        const text = chatInput.value.trim();
+        if (!text) return;
+        chatInput.value = '';
+        sendChatMessage(myRoomCode, text);
+      };
+      chatSendBtn.addEventListener('click', sendChat);
+      chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
+    }
 
     const swapBtn = el('btn-swap-note');
     if (swapBtn) swapBtn.addEventListener('click', () => swapDeathNote(myRoomCode));
@@ -825,13 +882,23 @@ async function swapDeathNote(code) {
   });
 }
 
+async function sendChatMessage(code, text) {
+  const key = Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  await update(ref(db, `rooms/${code}/info/chat`), { [key]: { senderId: myPlayerId, text, ts: Date.now() } });
+}
+
 async function submitKillGuess(code, targetId, first, last) {
+  const beforeKillsUsed = (currentRoomData.info && currentRoomData.info.killsThisPhase) || 0;
+  if (beforeKillsUsed >= 2) {
+    return '<p class="hint">You have already killed the maximum of 2 investigators this Information Phase.</p>';
+  }
   const before = currentRoomData.secrets && currentRoomData.secrets[targetId];
   if (!before || !before.alive || before.immune) {
     return '<p class="hint">That target is no longer available — pick another.</p>';
   }
   const result = await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || room.phase !== 'information' || room.info.step !== 'kira') return room;
+    if ((room.info.killsThisPhase || 0) >= 2) return room;
     const target = room.secrets[targetId];
     if (!target || !target.alive || target.immune) return room;
     if (first === target.firstName && last === target.lastName) {
@@ -839,6 +906,7 @@ async function submitKillGuess(code, targetId, first, last) {
       room.pendingDeaths = obj(room.pendingDeaths);
       room.pendingDeaths[targetId] = true;
       room.kiraScore = (room.kiraScore || 0) + 2;
+      room.info.killsThisPhase = (room.info.killsThisPhase || 0) + 1;
       applyWinCheck(room);
     } else {
       target.wrongGuessCount = (target.wrongGuessCount || 0) + 1;

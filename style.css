@@ -253,6 +253,37 @@ hr {
   margin: 10px 0;
 }
 
+.chat-log {
+  max-height: 180px;
+  overflow-y: auto;
+  background: #0f0f11;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+.chat-msg {
+  margin: 4px 0;
+  font-size: 0.9rem;
+  word-break: break-word;
+}
+.chat-msg strong {
+  color: var(--gold);
+}
+.chat-input-row {
+  display: flex;
+  gap: 8px;
+}
+.chat-input-row input {
+  flex: 1;
+  margin-bottom: 0;
+}
+.chat-input-row button {
+  width: auto;
+  margin: 0;
+  white-space: nowrap;
+}
+
 .toast {
   position: fixed;
   left: 50%;
