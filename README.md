@@ -1,7 +1,7 @@
 # Death Note: Kira's Game — Companion App
 
 A single-device, pass-and-play companion app for a Death Note–themed social
-deduction card game (5–10 players). The app is the "moderator": it deals
+deduction card game (7–10 players). The app is the "moderator": it deals
 secret roles and names, runs the round structure, and handles the
 information-phase night actions. Missions themselves are resolved with
 physical cards.
@@ -44,11 +44,10 @@ Each round has four phases, in order:
   (Kira's team then gets one shared final guess at L's full secret name;
   guessing correctly flips the win back to Kira).
 
-## Assumptions made while building this (adjust in `app.js` if wrong)
+## Notes
 
-- **Role scaling for < 10 players**: always exactly 1 L, 1 Kira, 1 Kira
-  Follower, with the rest as Investigators (e.g. a 5-player game is
-  1/1/1/2).
+- **Players**: 7–10. Always exactly 1 L, 1 Kira, 1 Kira Follower, with the
+  rest as Investigators (e.g. a 7-player game is 1/1/1/4).
 - **Voting**: majority is a strict majority of alive players who voted
   (more than half). Ties or no majority = nothing happens.
 - **Mission team size**: not validated by the app — it's whatever your

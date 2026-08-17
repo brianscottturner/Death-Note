@@ -63,7 +63,7 @@ el('btn-gen-names').addEventListener('click', () => {
 function clampCount() {
   const input = el('player-count');
   let count = parseInt(input.value, 10) || 7;
-  count = Math.max(5, Math.min(10, count));
+  count = Math.max(7, Math.min(10, count));
   input.value = count;
   return count;
 }
