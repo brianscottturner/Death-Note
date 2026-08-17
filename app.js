@@ -643,7 +643,10 @@ async function continueFromVotingResult(code) {
     if (!room || room.phase !== 'voting' || !room.voting.resolved) return room;
     if (room.endgame && room.endgame.active) return room;
     room.phase = 'information';
-    room.info = { step: null, swappedThisPhase: false };
+    const l = room.secrets[room.lPlayerId];
+    const lNeedsToAct = !!(l && l.alive && !l.skipNextInfo);
+    if (l && l.skipNextInfo) l.skipNextInfo = false;
+    room.info = { lDone: !lNeedsToAct, kiraDone: false, swappedThisPhase: false };
     return room;
   });
 }
@@ -706,11 +709,13 @@ function renderInformationPhase(room) {
   const players = obj(room.players);
   const secrets = obj(room.secrets);
   const info = obj(room.info);
+  const amL = myPlayerId === room.lPlayerId;
+  const amKiraTeam = myPlayerId === room.kiraPlayerId || myPlayerId === room.followerPlayerId;
 
-  // Preserve any in-progress kill-guess form selections across re-renders, since
-  // this panel is viewed by two separate devices (Kira + Follower) at once, and
-  // one device's action (e.g. swapping the Death Note) shouldn't wipe out the
-  // other device's half-filled guess.
+  // Preserve any in-progress kill-guess form selections and chat input across
+  // re-renders, since this panel is viewed by two separate devices (Kira +
+  // Follower) at once, and one device's action shouldn't wipe out the other
+  // device's half-filled guess or in-progress message.
   const prevKillTarget = el('kill-target') ? el('kill-target').value : null;
   const prevKillFirst = el('kill-first') ? el('kill-first').value : null;
   const prevKillLast = el('kill-last') ? el('kill-last').value : null;
@@ -719,29 +724,32 @@ function renderInformationPhase(room) {
 
   let html = `<h2>Information Phase</h2><div class="card pass-card">`;
 
-  if (!info.step) {
-    html += `<p class="waiting">Starting the Information Phase...</p>`;
-  } else if (info.step === 'l') {
-    if (myPlayerId === room.lPlayerId) {
-      const suspectIds = Object.keys(obj(info.lSuspects));
-      if (suspectIds.length === 0) {
-        html += `<button id="btn-l-reveal" class="primary">Reveal My 4 Suspects</button>`;
-      } else {
+  if (amL) {
+    const suspectIds = Object.keys(obj(info.lSuspects));
+    if (info.lDone) {
+      if (suspectIds.length > 0) {
         html += `<p><strong>4 Suspects — one of them is Kira:</strong></p>`;
         suspectIds.forEach(id => { html += `<div class="player-row"><span>${players[id].label} — ${esc(players[id].name)}</span></div>`; });
-        html += `<p class="hint">Kira's Follower has an equal chance of appearing here as any other Investigator.</p>
-          <button id="btn-l-done" class="primary">Done</button>`;
+        html += `<p class="hint">Done. Waiting for Kira's team to finish...</p>`;
+      } else {
+        html += `<p class="hint">You're sitting out this Information Phase.</p>`;
       }
+    } else if (suspectIds.length === 0) {
+      html += `<button id="btn-l-reveal" class="primary">Reveal My 4 Suspects</button>`;
     } else {
-      html += `<p class="waiting">Everyone else, close your eyes. L is reviewing suspects...</p>`;
+      html += `<p><strong>4 Suspects — one of them is Kira:</strong></p>`;
+      suspectIds.forEach(id => { html += `<div class="player-row"><span>${players[id].label} — ${esc(players[id].name)}</span></div>`; });
+      html += `<p class="hint">Kira's Follower has an equal chance of appearing here as any other Investigator.</p>
+        <button id="btn-l-done" class="primary">Done</button>`;
     }
-  } else if (info.step === 'kira') {
-    const amKiraTeam = myPlayerId === room.kiraPlayerId || myPlayerId === room.followerPlayerId;
-    if (amKiraTeam) {
-      const kira = players[room.kiraPlayerId], follower = players[room.followerPlayerId];
-      html += `<p><strong>Kira:</strong> ${kira.label} — ${esc(kira.name)} &nbsp; <strong>Follower:</strong> ${follower.label} — ${esc(follower.name)}</p>
-        <p class="hint">Share what you learned during the Mission Phase and strategize.</p><hr>`;
+  } else if (amKiraTeam) {
+    const kira = players[room.kiraPlayerId], follower = players[room.followerPlayerId];
+    html += `<p><strong>Kira:</strong> ${kira.label} — ${esc(kira.name)} &nbsp; <strong>Follower:</strong> ${follower.label} — ${esc(follower.name)}</p>
+      <p class="hint">Share what you learned during the Mission Phase and strategize.</p><hr>`;
 
+    if (info.kiraDone) {
+      html += `<p class="hint">Done. Waiting for L to finish...</p>`;
+    } else {
       const canSwap = !room.lastInfoPhaseSwapped && !info.swappedThisPhase;
       if (info.swappedThisPhase) html += `<p class="hint">The Death Note was swapped this phase.</p>`;
       else if (canSwap) html += `<button id="btn-swap-note" class="secondary">Swap the Death Note (Kira ⇄ Follower)</button>`;
@@ -766,28 +774,29 @@ function renderInformationPhase(room) {
             <p class="hint">${killsUsed === 1 ? '1 kill used — 1 remaining this phase.' : 'Up to 2 successful kills allowed this phase.'}</p>`;
         }
       }
-
-      html += `<hr><p><strong>Chat with your ${myPlayerId === room.kiraPlayerId ? 'Follower' : 'Kira'}</strong></p>
-        <div class="chat-log" id="kira-chat-log">${renderChatLog(obj(room.kiraChat), players)}</div>
-        <div class="chat-input-row">
-          <input type="text" id="kira-chat-input" placeholder="Message..." maxlength="200">
-          <button id="btn-kira-chat-send" class="secondary">Send</button>
-        </div>`;
-
       html += `<hr><button id="btn-info-finish" class="primary">Finished — Continue</button>`;
-    } else {
-      html += `<p class="waiting">Kira and the Follower are strategizing. Everyone else, keep your eyes closed...</p>`;
     }
+
+    html += `<hr><p><strong>Chat with your ${myPlayerId === room.kiraPlayerId ? 'Follower' : 'Kira'}</strong></p>
+      <div class="chat-log" id="kira-chat-log">${renderChatLog(obj(room.kiraChat), players)}</div>
+      <div class="chat-input-row">
+        <input type="text" id="kira-chat-input" placeholder="Message..." maxlength="200">
+        <button id="btn-kira-chat-send" class="secondary">Send</button>
+      </div>`;
+  } else {
+    html += `<p class="waiting">Everyone, close your eyes.<br>
+      L is ${info.lDone ? 'done' : 'reviewing suspects'}...<br>
+      Kira and the Follower are ${info.kiraDone ? 'done' : 'strategizing'}...</p>`;
   }
   html += `</div>`;
   el('round-content').innerHTML = html;
 
-  if (info.step === 'l' && myPlayerId === room.lPlayerId) {
+  if (amL && !info.lDone) {
     const suspectIds = Object.keys(obj(info.lSuspects));
     if (suspectIds.length === 0) el('btn-l-reveal').addEventListener('click', () => lRevealSuspects(myRoomCode));
     else el('btn-l-done').addEventListener('click', () => lDoneViewing(myRoomCode));
   }
-  if (info.step === 'kira' && (myPlayerId === room.kiraPlayerId || myPlayerId === room.followerPlayerId)) {
+  if (amKiraTeam) {
     const targetSel = el('kill-target'), firstSel = el('kill-first'), lastSel = el('kill-last');
     if (targetSel && prevKillTarget && [...targetSel.options].some(o => o.value === prevKillTarget)) targetSel.value = prevKillTarget;
     if (firstSel && prevKillFirst) firstSel.value = prevKillFirst;
@@ -815,40 +824,44 @@ function renderInformationPhase(room) {
       chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
     }
 
-    const swapBtn = el('btn-swap-note');
-    if (swapBtn) swapBtn.addEventListener('click', () => swapDeathNote(myRoomCode));
-    const killBtn = el('btn-kill-submit');
-    if (killBtn) killBtn.addEventListener('click', async () => {
-      const targetId = el('kill-target').value;
-      const first = el('kill-first').value;
-      const last = el('kill-last').value;
-      const msg = await submitKillGuess(myRoomCode, targetId, first, last);
-      showToast(msg);
-    });
-    el('btn-info-finish').addEventListener('click', () => finishInfoPhase(myRoomCode));
+    if (!info.kiraDone) {
+      const swapBtn = el('btn-swap-note');
+      if (swapBtn) swapBtn.addEventListener('click', () => swapDeathNote(myRoomCode));
+      const killBtn = el('btn-kill-submit');
+      if (killBtn) killBtn.addEventListener('click', async () => {
+        const targetId = el('kill-target').value;
+        const first = el('kill-first').value;
+        const last = el('kill-last').value;
+        const msg = await submitKillGuess(myRoomCode, targetId, first, last);
+        showToast(msg);
+      });
+      el('btn-info-finish').addEventListener('click', () => finishKiraTeamTurn(myRoomCode));
+    }
   }
 
-  maybeInitInfo(room, myRoomCode);
+  maybeAdvanceFromInfo(room, myRoomCode);
 }
 
-async function maybeInitInfo(room, code) {
-  if (room.phase !== 'information' || obj(room.info).step) return;
+async function maybeAdvanceFromInfo(room, code) {
+  if (room.phase !== 'information') return;
+  const info = obj(room.info);
+  if (!info.lDone || !info.kiraDone) return;
   await runTransaction(ref(db, `rooms/${code}`), (r) => {
-    if (!r || r.phase !== 'information' || obj(r.info).step) return r;
-    const l = r.secrets[r.lPlayerId];
-    if (l && l.alive && !l.skipNextInfo) {
-      r.info.step = 'l';
-    } else {
-      if (l && l.skipNextInfo) l.skipNextInfo = false;
-      r.info.step = 'kira';
-    }
+    if (!r || r.phase !== 'information') return r;
+    const i = obj(r.info);
+    if (!i.lDone || !i.kiraDone) return r;
+    r.round = (r.round || 1) + 1;
+    r.phase = 'deaths';
+    r.mission = { step: null };
+    r.voting = { resolved: false };
+    r.info = { lDone: false, kiraDone: false, swappedThisPhase: false };
     return r;
   });
 }
 
 async function lRevealSuspects(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
-    if (!room || room.phase !== 'information' || room.info.step !== 'l') return room;
+    if (!room || room.phase !== 'information' || room.info.lDone) return room;
     if (Object.keys(obj(room.info.lSuspects)).length > 0) return room;
     const players = obj(room.players), secrets = obj(room.secrets);
     const kiraId = room.kiraPlayerId;
@@ -862,15 +875,15 @@ async function lRevealSuspects(code) {
 }
 async function lDoneViewing(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
-    if (!room || room.phase !== 'information' || room.info.step !== 'l') return room;
-    room.info.step = 'kira';
+    if (!room || room.phase !== 'information' || room.info.lDone) return room;
+    room.info.lDone = true;
     return room;
   });
 }
 
 async function swapDeathNote(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
-    if (!room || room.phase !== 'information' || room.info.step !== 'kira') return room;
+    if (!room || room.phase !== 'information' || room.info.kiraDone) return room;
     if (room.lastInfoPhaseSwapped || room.info.swappedThisPhase) return room;
     const kId = room.kiraPlayerId, fId = room.followerPlayerId;
     room.secrets[kId].role = 'KiraFollower';
@@ -897,7 +910,7 @@ async function submitKillGuess(code, targetId, first, last) {
     return '<p class="hint">That target is no longer available — pick another.</p>';
   }
   const result = await runTransaction(ref(db, `rooms/${code}`), (room) => {
-    if (!room || room.phase !== 'information' || room.info.step !== 'kira') return room;
+    if (!room || room.phase !== 'information' || room.info.kiraDone) return room;
     if ((room.info.killsThisPhase || 0) >= 2) return room;
     const target = room.secrets[targetId];
     if (!target || !target.alive || target.immune) return room;
@@ -931,15 +944,11 @@ async function submitKillGuess(code, targetId, first, last) {
   return '<p class="hint">That guess didn\'t go through (maybe someone else acted first) — try again.</p>';
 }
 
-async function finishInfoPhase(code) {
+async function finishKiraTeamTurn(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
-    if (!room || room.phase !== 'information' || room.info.step !== 'kira') return room;
+    if (!room || room.phase !== 'information' || room.info.kiraDone) return room;
     room.lastInfoPhaseSwapped = !!room.info.swappedThisPhase;
-    room.round = (room.round || 1) + 1;
-    room.phase = 'deaths';
-    room.mission = { step: null };
-    room.voting = { resolved: false };
-    room.info = { step: null, swappedThisPhase: false };
+    room.info.kiraDone = true;
     return room;
   });
 }
