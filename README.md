@@ -60,8 +60,9 @@ Each round has four phases, in order:
    guesses don't count against it. Two wrong guesses on the same player
    makes them immune for the rest of the game. Kira and the Follower also
    know each other's identity from the very start (shown on the role
-   reveal screen), and get a private text chat during this phase, visible
-   only on their two devices.
+   reveal screen), and get a private text chat, visible only on their two
+   devices, that persists for the whole game rather than resetting each
+   phase.
 
 ## Win conditions
 

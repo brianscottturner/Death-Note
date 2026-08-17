@@ -768,7 +768,7 @@ function renderInformationPhase(room) {
       }
 
       html += `<hr><p><strong>Chat with your ${myPlayerId === room.kiraPlayerId ? 'Follower' : 'Kira'}</strong></p>
-        <div class="chat-log" id="kira-chat-log">${renderChatLog(obj(info.chat), players)}</div>
+        <div class="chat-log" id="kira-chat-log">${renderChatLog(obj(room.kiraChat), players)}</div>
         <div class="chat-input-row">
           <input type="text" id="kira-chat-input" placeholder="Message..." maxlength="200">
           <button id="btn-kira-chat-send" class="secondary">Send</button>
@@ -884,7 +884,7 @@ async function swapDeathNote(code) {
 
 async function sendChatMessage(code, text) {
   const key = Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-  await update(ref(db, `rooms/${code}/info/chat`), { [key]: { senderId: myPlayerId, text, ts: Date.now() } });
+  await update(ref(db, `rooms/${code}/kiraChat`), { [key]: { senderId: myPlayerId, text, ts: Date.now() } });
 }
 
 async function submitKillGuess(code, targetId, first, last) {
