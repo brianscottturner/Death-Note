@@ -817,7 +817,8 @@ function renderInformationPhase(room) {
   } else {
     html += `<p class="waiting">Everyone, close your eyes.<br>
       L is ${info.lDone ? 'done' : 'reviewing suspects'}...<br>
-      Kira and the Follower are ${info.kiraDone ? 'done' : 'strategizing'}...</p>`;
+      Kira and the Follower are ${info.kiraDone ? 'done' : 'strategizing'}...</p>
+      <p class="hint">Please use this time to take notes, write down suspicions, and write down a plan for next round.</p>`;
   }
   html += `</div>`;
   el('round-content').innerHTML = html;
