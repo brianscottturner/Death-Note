@@ -44,14 +44,22 @@ function clearSession() {
 
 /* ---------------- AUTH BOOTSTRAP ---------------- */
 
+let resolveAuthReady;
+const authReadyPromise = new Promise((resolve) => { resolveAuthReady = resolve; });
+
 onAuthStateChanged(auth, (user) => {
   if (user) {
     myUid = user.uid;
+    el('btn-create-game').disabled = false;
+    el('btn-join-game').disabled = false;
+    el('landing-connecting').classList.add('hidden');
+    resolveAuthReady();
     tryResumeSession();
   }
 });
 signInAnonymously(auth).catch((err) => {
   console.error(err);
+  el('landing-connecting').textContent = 'Could not connect.';
   showLandingError('Could not connect. Check your internet connection and reload.');
 });
 
@@ -125,6 +133,7 @@ el('btn-join-game').addEventListener('click', async () => {
 });
 
 async function createRoom(name) {
+  await authReadyPromise;
   const code = generateRoomCode();
   await set(ref(db, `rooms/${code}`), {
     code, createdAt: Date.now(), hostUid: myUid, status: 'lobby',
@@ -143,6 +152,7 @@ async function createRoom(name) {
 }
 
 async function joinRoom(code, name) {
+  await authReadyPromise;
   const roomRef = ref(db, `rooms/${code}`);
   const snap = await get(roomRef);
   if (!snap.exists()) throw new Error('Room not found.');

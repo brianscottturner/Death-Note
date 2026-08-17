@@ -14,15 +14,16 @@
     <h1 class="title">DEATH NOTE<br><span class="subtitle">Kira's Game</span></h1>
     <div class="card">
       <div id="landing-error" class="error hidden"></div>
+      <p id="landing-connecting" class="hint">Connecting...</p>
       <label for="landing-name">Your name</label>
       <input type="text" id="landing-name" placeholder="Your name" maxlength="20">
 
-      <button id="btn-create-game" class="primary">Create New Game</button>
+      <button id="btn-create-game" class="primary" disabled>Create New Game</button>
 
       <hr>
       <label for="landing-code">Room code</label>
       <input type="text" id="landing-code" placeholder="e.g. KIRA42" maxlength="6" style="text-transform:uppercase">
-      <button id="btn-join-game" class="secondary">Join Game</button>
+      <button id="btn-join-game" class="secondary" disabled>Join Game</button>
     </div>
   </section>
 
