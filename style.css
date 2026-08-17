@@ -284,6 +284,32 @@ hr {
   white-space: nowrap;
 }
 
+#notes-panel {
+  margin-top: 4px;
+}
+#notes-panel #btn-notes-toggle {
+  margin: 0;
+}
+#notes-textarea {
+  width: 100%;
+  min-height: 120px;
+  background: #0f0f11;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  resize: vertical;
+}
+#notes-saved-indicator {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  text-align: right;
+  min-height: 1.2em;
+  margin-top: 4px;
+}
+
 .toast {
   position: fixed;
   left: 50%;

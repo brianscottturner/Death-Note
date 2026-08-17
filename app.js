@@ -191,6 +191,7 @@ async function joinRoom(code, name) {
 
 function attachRoomListener(code) {
   detachRoomListener();
+  notesPanelInitialized = false;
   const roomRef = ref(db, `rooms/${code}`);
   roomUnsub = onValue(roomRef, (snap) => {
     if (!snap.exists()) {
@@ -384,11 +385,41 @@ function updateHeader(room) {
 
 function renderRound(room) {
   updateHeader(room);
+  initNotesPanel(room);
   if (room.endgame && room.endgame.active && !room.endgame.resolved) return renderEndgame(room);
   if (room.phase === 'deaths') return renderDeathsPhase(room);
   if (room.phase === 'mission') return renderMissionPhase(room);
   if (room.phase === 'voting') return renderVotingPhase(room);
   if (room.phase === 'information') return renderInformationPhase(room);
+}
+
+/* ---------------- PRIVATE NOTES (per-player scratchpad, persists all game) ---------------- */
+
+let notesPanelInitialized = false;
+let notesSaveTimer = null;
+
+function initNotesPanel(room) {
+  if (notesPanelInitialized) return;
+  notesPanelInitialized = true;
+
+  const textarea = el('notes-textarea');
+  textarea.value = (obj(room.notes)[myPlayerId]) || '';
+
+  el('btn-notes-toggle').addEventListener('click', () => {
+    el('notes-body').classList.toggle('hidden');
+  });
+
+  textarea.addEventListener('input', () => {
+    el('notes-saved-indicator').textContent = 'Typing...';
+    clearTimeout(notesSaveTimer);
+    notesSaveTimer = setTimeout(() => saveNotes(myRoomCode, myPlayerId, textarea.value), 600);
+  });
+}
+
+async function saveNotes(code, playerId, text) {
+  await set(ref(db, `rooms/${code}/notes/${playerId}`), text || null);
+  const indicator = el('notes-saved-indicator');
+  if (indicator) indicator.textContent = 'Saved';
 }
 
 function applyWinCheck(room) {

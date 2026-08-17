@@ -18,7 +18,11 @@ passing required. From there the app drives the same four-phase round loop
 as before, but now every device shows the view appropriate to that specific
 player (e.g. only the Leading Investigator's phone shows mission team
 selection; only Kira and the Follower's phones show the night-phase
-strategize panel).
+strategize panel). Every player also has a private "My Notes" scratchpad
+(collapsed by default, tap to open) visible below the phase content at
+all times — autosaves as they type, persists for the whole game, and
+isn't shared with anyone else, so investigators have somewhere to track
+suspicions even during phases where they're not the one acting.
 
 **Security note**: rooms are locked to whoever knows the room code (not
 publicly listable/enumerable), but there's no true per-field secrecy

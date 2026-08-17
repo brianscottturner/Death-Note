@@ -44,6 +44,14 @@
       <div id="score-label">L: 0 &nbsp;|&nbsp; Kira: 0</div>
     </header>
     <div id="round-content"></div>
+    <div id="notes-panel" class="card">
+      <button id="btn-notes-toggle" class="secondary" type="button">📝 My Private Notes</button>
+      <div id="notes-body" class="hidden">
+        <p class="hint">Only you can see this. Jot down suspicions, plans, names people shared — it's saved automatically and stays for the whole game.</p>
+        <textarea id="notes-textarea" placeholder="Suspicions, plans, names people shared with you..." maxlength="2000"></textarea>
+        <div id="notes-saved-indicator"></div>
+      </div>
+    </div>
   </section>
 
   <!-- GAME OVER -->
