@@ -7,6 +7,7 @@ const FIRST_NAMES = ["Harry", "Ron", "Katniss", "Peeta", "Percy", "Sherlock", "P
 const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holmes", "Parker", "Stark", "Wayne", "Kent"];
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const KIRA_TURN_MS = 2 * 60 * 1000;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -422,6 +423,36 @@ async function saveNotes(code, playerId, text) {
   if (indicator) indicator.textContent = 'Saved';
 }
 
+/* ---------------- KIRA TURN TIMER ---------------- */
+
+let kiraTurnAutoFinishTriggered = false;
+
+setInterval(() => {
+  if (!currentRoomData || currentRoomData.phase !== 'information') {
+    kiraTurnAutoFinishTriggered = false;
+    return;
+  }
+  const info = obj(currentRoomData.info);
+  const timerEl = el('info-timer');
+  if (info.kiraDone || !info.kiraDeadline) {
+    if (timerEl) timerEl.textContent = '';
+    return;
+  }
+  const remainingMs = info.kiraDeadline - Date.now();
+  if (remainingMs <= 0) {
+    if (timerEl) timerEl.textContent = "Kira's team is out of time...";
+    if (!kiraTurnAutoFinishTriggered) {
+      kiraTurnAutoFinishTriggered = true;
+      finishKiraTeamTurn(myRoomCode);
+    }
+    return;
+  }
+  const remainingSec = Math.ceil(remainingMs / 1000);
+  const mm = Math.floor(remainingSec / 60);
+  const ss = String(remainingSec % 60).padStart(2, '0');
+  if (timerEl) timerEl.textContent = `Kira's team turn: ${mm}:${ss} remaining`;
+}, 1000);
+
 function applyWinCheck(room) {
   if (room.status === 'gameover') return;
   if ((room.kiraScore || 0) >= 10) {
@@ -677,7 +708,7 @@ async function continueFromVotingResult(code) {
     const l = room.secrets[room.lPlayerId];
     const lNeedsToAct = !!(l && l.alive && !l.skipNextInfo);
     if (l && l.skipNextInfo) l.skipNextInfo = false;
-    room.info = { lDone: !lNeedsToAct, kiraDone: false, swappedThisPhase: false };
+    room.info = { lDone: !lNeedsToAct, kiraDone: false, swappedThisPhase: false, kiraDeadline: Date.now() + KIRA_TURN_MS };
     return room;
   });
 }
@@ -757,6 +788,7 @@ function renderInformationPhase(room) {
 
   if (amL) {
     const suspectIds = Object.keys(obj(info.lSuspects));
+    html += `<div id="info-timer" class="hint"></div>`;
     if (info.lDone) {
       if (suspectIds.length > 0) {
         html += `<p><strong>4 Suspects — one of them is Kira:</strong></p>`;
@@ -776,7 +808,8 @@ function renderInformationPhase(room) {
   } else if (amKiraTeam) {
     const kira = players[room.kiraPlayerId], follower = players[room.followerPlayerId];
     html += `<p><strong>Kira:</strong> ${kira.label} — ${esc(kira.name)} &nbsp; <strong>Follower:</strong> ${follower.label} — ${esc(follower.name)}</p>
-      <p class="hint">Share what you learned during the Mission Phase and strategize.</p><hr>`;
+      <p class="hint">Share what you learned during the Mission Phase and strategize.</p>
+      <div id="info-timer" class="hint"></div><hr>`;
 
     if (info.kiraDone) {
       html += `<p class="hint">Done. Waiting for L to finish...</p>`;
@@ -818,6 +851,7 @@ function renderInformationPhase(room) {
     html += `<p class="waiting">Everyone, close your eyes.<br>
       L is ${info.lDone ? 'done' : 'reviewing suspects'}...<br>
       Kira and the Follower are ${info.kiraDone ? 'done' : 'strategizing'}...</p>
+      <div id="info-timer" class="hint" style="text-align:center;"></div>
       <p class="hint">Please use this time to take notes, write down suspicions, and write down a plan for next round.</p>`;
   }
   html += `</div>`;
