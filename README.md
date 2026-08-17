@@ -1,21 +1,42 @@
 # Death Note: Kira's Game — Companion App
 
-A single-device, pass-and-play companion app for a Death Note–themed social
-deduction card game (7–10 players). The app is the "moderator": it deals
-secret roles and names, runs the round structure, and handles the
+A multiplayer companion app for a Death Note–themed social deduction card
+game (7–10 players), each on their own phone. The app is the "moderator":
+it deals secret roles and names, runs the round structure, and handles the
 information-phase night actions. Missions themselves are resolved with
-physical cards.
+physical cards. Game state is synced in real time across devices via
+Firebase Realtime Database; there's still no build step — it's static
+HTML/CSS/JS, hosted on GitHub Pages.
 
-## Running it
+## How it works
 
-No build step or server required — it's static HTML/CSS/JS.
+One player creates a game and gets a 6-character room code; everyone else
+opens the app on their own phone and enters that code to join the same
+session. Once 7–10 players have joined, the host deals roles — each phone
+then privately shows only that player's own secret role and name, with no
+passing required. From there the app drives the same four-phase round loop
+as before, but now every device shows the view appropriate to that specific
+player (e.g. only the Leading Investigator's phone shows mission team
+selection; only Kira and the Follower's phones show the night-phase
+strategize panel).
+
+**Security note**: rooms are locked to whoever knows the room code (not
+publicly listable/enumerable), but there's no true per-field secrecy
+enforced server-side — Firebase's free tier has no way to verify a
+"guess a name" action without exposing the underlying secret data at some
+point, short of paid Cloud Functions. This matches the trust level of the
+original pass-and-play design (an honor system among people already in the
+room), not something built to resist a technically motivated cheater.
+
+## Running it locally
 
 ```
 python3 -m http.server 8000
 ```
 
-Then open `http://localhost:8000` on the one device being passed around
-the table.
+Then open `http://localhost:8000`. For real play, though, just use the
+GitHub Pages URL so everyone can join from their own phone without needing
+to be on the same machine/network.
 
 ## Round structure
 
@@ -54,3 +75,31 @@ Each round has four phases, in order:
   physical mission card says, the app just lets the leader pick names.
 - **Death reveal**: revealing a death does not reveal the dead player's
   secret role, only that they died.
+
+## Firebase setup
+
+`firebase-config.js` holds the project's public web config (safe to be
+public — Firebase's actual security is enforced by its Rules, not by
+hiding this file). `firebase-init.js` wires that config up to the
+Realtime Database + Anonymous Auth SDKs loaded from Google's CDN.
+
+Requires, in the Firebase console for this project:
+- **Authentication → Sign-in method → Anonymous**: enabled.
+- **Realtime Database → Rules**, set to:
+  ```json
+  {
+    "rules": {
+      "rooms": {
+        "$roomCode": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        }
+      },
+      ".read": false,
+      ".write": false
+    }
+  }
+  ```
+  This locks every room to people who know its 6-character code (Realtime
+  Database has no way to list/enumerate `/rooms` without a rule granting
+  that separately, which this doesn't), while keeping the app serverless.

@@ -1,8 +1,12 @@
-'use strict';
+import {
+  auth, db, signInAnonymously, onAuthStateChanged,
+  ref, get, set, update, onValue, runTransaction
+} from "./firebase-init.js";
 
 const FIRST_NAMES = ["Harry", "Ron", "Katniss", "Peeta", "Percy", "Sherlock", "Peter", "Tony", "Bruce", "Clark"];
 const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holmes", "Parker", "Stark", "Wayne", "Kent"];
 const LABELS = "ABCDEFGHIJ".split("");
+const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -12,562 +16,875 @@ function shuffle(arr) {
   }
   return a;
 }
-
 function el(id) { return document.getElementById(id); }
-function alivePlayers() { return state.players.filter(p => p.alive); }
-function findPlayer(id) { return state.players.find(p => p.id === id); }
+function obj(x) { return x || {}; }
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function generateRoomCode() {
+  let s = '';
+  for (let i = 0; i < 6; i++) s += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+  return s;
+}
 
-const state = {
-  players: [],
-  round: 1,
-  lScore: 0,
-  kiraScore: 0,
-  lPlayerId: null,
-  kiraPlayerId: null,
-  followerPlayerId: null,
-  lastInfoPhaseSwapped: false,
-  pendingDeaths: [],
-  revealIndex: 0,
-  missionLeaderId: null,
-  missionTeamIds: [],
-  missionResult: null,
-  votingOrder: null,
-  votingIndex: 0,
-  votes: {},
-  infoStep: null,
-  lSuspects: null,
-  didSwapThisInfoPhase: false,
-  gameOver: null
-};
+/* ---------------- LOCAL SESSION STATE ---------------- */
+
+let myUid = null;
+let myRoomCode = null;
+let myPlayerId = null;
+let currentRoomData = null;
+let roomUnsub = null;
+
+function saveSession(code) {
+  localStorage.setItem('dn_session', JSON.stringify({ code }));
+}
+function clearSession() {
+  localStorage.removeItem('dn_session');
+}
+
+/* ---------------- AUTH BOOTSTRAP ---------------- */
+
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    myUid = user.uid;
+    tryResumeSession();
+  }
+});
+signInAnonymously(auth).catch((err) => {
+  console.error(err);
+  showLandingError('Could not connect. Check your internet connection and reload.');
+});
+
+function tryResumeSession() {
+  const saved = localStorage.getItem('dn_session');
+  if (!saved) { showScreen('screen-landing'); return; }
+  try {
+    const { code } = JSON.parse(saved);
+    if (code) { myRoomCode = code; attachRoomListener(code); return; }
+  } catch (e) { /* ignore */ }
+  showScreen('screen-landing');
+}
+
+/* ---------------- SCREEN HELPERS ---------------- */
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
   el(id).classList.remove('hidden');
 }
-
-/* ---------------- SETUP ---------------- */
-
-el('btn-gen-names').addEventListener('click', () => {
-  const count = clampCount();
-  const box = el('player-name-inputs');
-  box.innerHTML = '';
-  for (let i = 0; i < count; i++) {
-    const label = LABELS[i];
-    const wrap = document.createElement('div');
-    wrap.innerHTML = `<label>Investigator ${label} — name (optional)</label>
-      <input type="text" class="name-input" placeholder="Investigator ${label}">`;
-    box.appendChild(wrap);
-  }
-});
-
-function clampCount() {
-  const input = el('player-count');
-  let count = parseInt(input.value, 10) || 7;
-  count = Math.max(7, Math.min(10, count));
-  input.value = count;
-  return count;
+function screenForStatus(status) {
+  return { lobby: 'screen-lobby', reveal: 'screen-reveal', playing: 'screen-round', gameover: 'screen-gameover' }[status];
+}
+let toastTimer = null;
+function showToast(html, duration = 5000) {
+  const t = el('toast');
+  t.innerHTML = html;
+  t.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add('hidden'), duration);
 }
 
-el('btn-start-setup').addEventListener('click', () => {
-  const count = clampCount();
-  const nameInputs = Array.from(document.querySelectorAll('.name-input'));
-  const names = [];
-  for (let i = 0; i < count; i++) {
-    const v = nameInputs[i] ? nameInputs[i].value.trim() : '';
-    names.push(v || `Investigator ${LABELS[i]}`);
+function showLandingError(msg) {
+  const box = el('landing-error');
+  box.textContent = msg;
+  box.classList.remove('hidden');
+}
+function clearLandingError() {
+  el('landing-error').classList.add('hidden');
+}
+
+/* ---------------- LANDING: CREATE / JOIN ---------------- */
+
+el('btn-create-game').addEventListener('click', async () => {
+  clearLandingError();
+  const name = el('landing-name').value.trim();
+  if (!name) return showLandingError('Enter your name first.');
+  el('btn-create-game').disabled = true;
+  try {
+    await createRoom(name);
+  } catch (e) {
+    showLandingError('Could not create game: ' + e.message);
+  } finally {
+    el('btn-create-game').disabled = false;
   }
-  dealRoles(count, names);
 });
 
-function dealRoles(count, names) {
-  const roles = ['L', 'Kira', 'KiraFollower'].concat(Array(count - 3).fill('Investigator'));
-  const rolesShuffled = shuffle(roles);
-  const firstNames = shuffle(FIRST_NAMES).slice(0, count);
-  const lastNames = shuffle(LAST_NAMES).slice(0, count);
+el('btn-join-game').addEventListener('click', async () => {
+  clearLandingError();
+  const name = el('landing-name').value.trim();
+  const code = el('landing-code').value.trim().toUpperCase();
+  if (!name) return showLandingError('Enter your name first.');
+  if (!code) return showLandingError('Enter the room code.');
+  el('btn-join-game').disabled = true;
+  try {
+    await joinRoom(code, name);
+  } catch (e) {
+    showLandingError('Could not join: ' + e.message);
+  } finally {
+    el('btn-join-game').disabled = false;
+  }
+});
 
-  state.players = [];
-  for (let i = 0; i < count; i++) {
-    state.players.push({
-      id: i,
-      label: LABELS[i],
-      name: names[i],
-      role: rolesShuffled[i],
-      firstName: firstNames[i],
-      lastName: lastNames[i],
-      alive: true,
-      skipNextMission: false,
-      skipNextInfo: false,
-      wrongGuessCount: 0,
-      immune: false
+async function createRoom(name) {
+  const code = generateRoomCode();
+  await set(ref(db, `rooms/${code}`), {
+    code, createdAt: Date.now(), hostUid: myUid, status: 'lobby',
+    round: 0, phase: null,
+    lScore: 0, kiraScore: 0,
+    lastInfoPhaseSwapped: false,
+    mission: { step: null },
+    voting: { resolved: false },
+    info: { step: null, swappedThisPhase: false },
+    endgame: { active: false, resolved: false },
+    players: { A: { uid: myUid, label: 'A', name } }
+  });
+  myRoomCode = code;
+  saveSession(code);
+  attachRoomListener(code);
+}
+
+async function joinRoom(code, name) {
+  const roomRef = ref(db, `rooms/${code}`);
+  const snap = await get(roomRef);
+  if (!snap.exists()) throw new Error('Room not found.');
+  const room = snap.val();
+  if (room.status !== 'lobby') throw new Error('This game has already started.');
+
+  const playersRef = ref(db, `rooms/${code}/players`);
+  const result = await runTransaction(playersRef, (players) => {
+    players = players || {};
+    const used = Object.keys(players);
+    if (used.some(id => players[id].uid === myUid)) return players;
+    if (used.length >= 10) return players;
+    const nextLabel = LABELS.find(l => !used.includes(l));
+    players[nextLabel] = { uid: myUid, label: nextLabel, name };
+    return players;
+  });
+  const finalPlayers = obj(result.snapshot.val());
+  const joined = Object.values(finalPlayers).some(p => p.uid === myUid);
+  if (!joined) throw new Error('Room is full.');
+
+  myRoomCode = code;
+  saveSession(code);
+  attachRoomListener(code);
+}
+
+/* ---------------- ROOM LISTENER ---------------- */
+
+function attachRoomListener(code) {
+  detachRoomListener();
+  const roomRef = ref(db, `rooms/${code}`);
+  roomUnsub = onValue(roomRef, (snap) => {
+    if (!snap.exists()) {
+      clearSession();
+      currentRoomData = null;
+      showScreen('screen-landing');
+      showLandingError('That game no longer exists.');
+      return;
+    }
+    currentRoomData = snap.val();
+    render();
+  }, (err) => {
+    console.error(err);
+    showLandingError('Connection error: ' + err.message);
+  });
+}
+function detachRoomListener() {
+  if (roomUnsub) { roomUnsub(); roomUnsub = null; }
+}
+
+/* ---------------- MAIN RENDER DISPATCH ---------------- */
+
+function render() {
+  const room = currentRoomData;
+  if (!room) return;
+  if (!resolveMyPlayerId(room)) return;
+  showScreen(screenForStatus(room.status));
+  if (room.status === 'lobby') return renderLobby(room);
+  if (room.status === 'reveal') return renderReveal(room);
+  if (room.status === 'playing') return renderRound(room);
+  if (room.status === 'gameover') return renderGameOver(room);
+}
+
+function resolveMyPlayerId(room) {
+  if (myPlayerId && room.players && room.players[myPlayerId] && room.players[myPlayerId].uid === myUid) return true;
+  const players = obj(room.players);
+  const found = Object.keys(players).find(id => players[id].uid === myUid);
+  if (found) { myPlayerId = found; return true; }
+  clearSession();
+  detachRoomListener();
+  currentRoomData = null;
+  myRoomCode = null;
+  myPlayerId = null;
+  showScreen('screen-landing');
+  showLandingError("You're not part of that game (anymore).");
+  return false;
+}
+
+/* ---------------- LOBBY ---------------- */
+
+function renderLobby(room) {
+  const players = obj(room.players);
+  const ids = Object.keys(players).sort();
+  const isHost = myUid === room.hostUid;
+  const count = ids.length;
+  const canStart = isHost && count >= 7 && count <= 10;
+
+  let html = `<h1 class="title">DEATH NOTE<br><span class="subtitle">Kira's Game</span></h1>
+    <div class="card">
+      <p class="hint">Share this room code with everyone playing:</p>
+      <div class="room-code">${room.code}</div>
+      <p class="hint">${count} / 10 joined (need at least 7 to start)</p>
+      <div class="player-list">`;
+  ids.forEach(id => {
+    html += `<div class="player-row"><span>${players[id].label} — ${esc(players[id].name)}${players[id].uid === myUid ? ' (you)' : ''}</span></div>`;
+  });
+  html += `</div>`;
+  if (isHost) {
+    html += canStart
+      ? `<button id="btn-start-game" class="primary">Deal Roles &amp; Start</button>`
+      : `<p class="hint">Waiting for at least 7 players to join...</p>`;
+  } else {
+    html += `<p class="hint">Waiting for the host to start the game...</p>`;
+  }
+  html += `</div>`;
+  el('lobby-content').innerHTML = html;
+
+  if (canStart) {
+    el('btn-start-game').addEventListener('click', () => startGame(myRoomCode));
+  }
+}
+
+async function startGame(code) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.status !== 'lobby') return room;
+    const playerIds = Object.keys(obj(room.players));
+    const count = playerIds.length;
+    if (count < 7 || count > 10) return room;
+    const roles = shuffle(['L', 'Kira', 'KiraFollower'].concat(Array(count - 3).fill('Investigator')));
+    const firstNames = shuffle(FIRST_NAMES).slice(0, count);
+    const lastNames = shuffle(LAST_NAMES).slice(0, count);
+    const secrets = {};
+    playerIds.forEach((id, i) => {
+      secrets[id] = {
+        role: roles[i], firstName: firstNames[i], lastName: lastNames[i],
+        alive: true, skipNextMission: false, skipNextInfo: false,
+        wrongGuessCount: 0, immune: false, ready: false
+      };
     });
-  }
-  state.lPlayerId = state.players.find(p => p.role === 'L').id;
-  state.kiraPlayerId = state.players.find(p => p.role === 'Kira').id;
-  state.followerPlayerId = state.players.find(p => p.role === 'KiraFollower').id;
-
-  state.revealIndex = 0;
-  showScreen('screen-reveal');
-  renderReveal();
+    room.secrets = secrets;
+    room.lPlayerId = playerIds.find(id => secrets[id].role === 'L');
+    room.kiraPlayerId = playerIds.find(id => secrets[id].role === 'Kira');
+    room.followerPlayerId = playerIds.find(id => secrets[id].role === 'KiraFollower');
+    room.status = 'reveal';
+    return room;
+  });
 }
 
-/* ---------------- ROLE / NAME REVEAL ---------------- */
+/* ---------------- REVEAL ---------------- */
 
-function renderReveal() {
-  if (state.revealIndex >= state.players.length) {
-    startRound();
-    return;
-  }
-  const p = state.players[state.revealIndex];
-  el('reveal-pass-text').textContent = `Pass the device to Investigator ${p.label} (${p.name})`;
-  el('reveal-content').classList.add('hidden');
-  el('btn-reveal-show').classList.remove('hidden');
-}
-
-el('btn-reveal-show').addEventListener('click', () => {
-  const p = state.players[state.revealIndex];
+function renderReveal(room) {
+  const mySecret = obj(room.secrets)[myPlayerId];
+  if (!mySecret) return;
   let roleName, roleDesc;
-  if (p.role === 'Kira') {
+  if (mySecret.role === 'Kira') {
     roleName = 'You are KIRA';
     roleDesc = "You lead the evil team. Coordinate with your Follower during the Information Phase. Kill investigators by correctly guessing their secret names. Avoid being arrested.";
-  } else if (p.role === 'KiraFollower') {
+  } else if (mySecret.role === 'KiraFollower') {
     roleName = "You are KIRA'S FOLLOWER";
     roleDesc = "You know who Kira is. Help them strategize. If needed, you can swap the Death Note with Kira to become Kira yourself.";
-  } else if (p.role === 'L') {
+  } else if (mySecret.role === 'L') {
     roleName = 'You are L';
     roleDesc = "Each Information Phase you'll be shown 4 suspects — one is truly Kira. Use missions and votes to find and arrest Kira before it's too late.";
   } else {
     roleName = 'You are an INVESTIGATOR';
     roleDesc = "You're on L's side. Vote wisely and help complete missions to expose Kira.";
   }
-  el('reveal-role-box').innerHTML = `
-    <div class="role-name">${roleName}</div>
-    <div class="role-names">Your secret name: <strong>${p.firstName} ${p.lastName}</strong></div>
-    <div class="role-desc">${roleDesc}</div>`;
-  el('reveal-content').classList.remove('hidden');
-  el('btn-reveal-show').classList.add('hidden');
-});
 
-el('btn-reveal-next').addEventListener('click', () => {
-  state.revealIndex++;
-  renderReveal();
-});
+  const ready = !!mySecret.ready;
+  let html = `<h2>Your Secret Role</h2>
+    <div class="card">
+      <div class="role-box">
+        <div class="role-name">${roleName}</div>
+        <div class="role-names">Your secret name: <strong>${mySecret.firstName} ${mySecret.lastName}</strong></div>
+        <div class="role-desc">${roleDesc}</div>
+      </div>`;
+  if (!ready) {
+    html += `<button id="btn-ready" class="primary">I've Memorized My Role — Ready</button>`;
+  } else {
+    const players = obj(room.players);
+    const secrets = obj(room.secrets);
+    const readyCount = Object.values(secrets).filter(s => s.ready).length;
+    html += `<p class="hint">Waiting for everyone else... (${readyCount}/${Object.keys(players).length} ready)</p>`;
+  }
+  html += `</div>`;
+  el('reveal-content2').innerHTML = html;
 
-/* ---------------- ROUND FLOW ---------------- */
-
-function startRound() {
-  state.round = 1;
-  state.lScore = 0;
-  state.kiraScore = 0;
-  state.pendingDeaths = [];
-  state.lastInfoPhaseSwapped = false;
-  showScreen('screen-round');
-  resetRoundTransientState();
-  goPhase('deaths');
+  if (!ready) {
+    el('btn-ready').addEventListener('click', () => markReady(myRoomCode, myPlayerId));
+  }
+  maybeStartRound(room, myRoomCode);
 }
 
-function resetRoundTransientState() {
-  state.missionLeaderId = null;
-  state.missionTeamIds = [];
-  state.missionResult = null;
-  state.votingOrder = null;
-  state.votingIndex = 0;
-  state.votes = {};
-  state.infoStep = null;
-  state.lSuspects = null;
+async function markReady(code, playerId) {
+  await update(ref(db, `rooms/${code}/secrets/${playerId}`), { ready: true });
 }
 
-function nextRound() {
-  state.round++;
-  resetRoundTransientState();
-  goPhase('deaths');
+async function maybeStartRound(room, code) {
+  if (room.status !== 'reveal') return;
+  const secrets = obj(room.secrets);
+  const players = obj(room.players);
+  const ids = Object.keys(players);
+  if (ids.length === 0 || !ids.every(id => secrets[id] && secrets[id].ready)) return;
+  await runTransaction(ref(db, `rooms/${code}`), (r) => {
+    if (!r || r.status !== 'reveal') return r;
+    const s = obj(r.secrets), p = obj(r.players);
+    if (!Object.keys(p).every(id => s[id] && s[id].ready)) return r;
+    r.status = 'playing';
+    r.round = 1;
+    r.phase = 'deaths';
+    return r;
+  });
 }
 
-function updateHeader() {
-  el('round-label').textContent = `Round ${state.round}`;
-  el('score-label').textContent = `L: ${state.lScore}  |  Kira: ${state.kiraScore}`;
+/* ---------------- ROUND DISPATCH ---------------- */
+
+function updateHeader(room) {
+  el('round-label').textContent = `Round ${room.round || 1}`;
+  el('score-label').textContent = `L: ${room.lScore || 0}  |  Kira: ${room.kiraScore || 0}`;
 }
 
-function goPhase(name) {
-  document.querySelectorAll('.phase-panel').forEach(p => p.classList.add('hidden'));
-  el('phase-' + name).classList.remove('hidden');
-  updateHeader();
-  if (name === 'deaths') renderDeaths();
-  if (name === 'mission') renderMission();
-  if (name === 'voting') renderVoting();
-  if (name === 'information') renderInfo();
+function renderRound(room) {
+  updateHeader(room);
+  if (room.endgame && room.endgame.active && !room.endgame.resolved) return renderEndgame(room);
+  if (room.phase === 'deaths') return renderDeathsPhase(room);
+  if (room.phase === 'mission') return renderMissionPhase(room);
+  if (room.phase === 'voting') return renderVotingPhase(room);
+  if (room.phase === 'information') return renderInformationPhase(room);
+}
+
+function applyWinCheck(room) {
+  if (room.status === 'gameover') return;
+  if ((room.kiraScore || 0) >= 10) {
+    room.status = 'gameover';
+    room.gameOverInfo = { winner: 'Kira', reason: "Kira's team reached 10 points." };
+    return;
+  }
+  if ((room.lScore || 0) >= 10) {
+    room.status = 'gameover';
+    room.gameOverInfo = { winner: 'L', reason: "L's team reached 10 points." };
+    return;
+  }
+  const l = room.secrets && room.secrets[room.lPlayerId];
+  if (l && !l.alive) {
+    room.status = 'gameover';
+    room.gameOverInfo = { winner: 'Kira', reason: 'L has been killed.' };
+  }
 }
 
 /* ---------------- DEATHS PHASE ---------------- */
 
-function renderDeaths() {
-  const box = el('deaths-content');
-  if (state.pendingDeaths.length === 0) {
-    box.innerHTML = `<p>No one has died... yet.</p>`;
-  } else {
-    box.innerHTML = state.pendingDeaths.map(id => {
-      const p = findPlayer(id);
-      return `<p>Investigator ${p.label} has died.</p>`;
-    }).join('');
-  }
+function renderDeathsPhase(room) {
+  const players = obj(room.players);
+  const deaths = Object.keys(obj(room.pendingDeaths));
+  let html = `<h2>Deaths Phase</h2><div class="card">`;
+  if (deaths.length === 0) html += `<p>No one has died... yet.</p>`;
+  else deaths.forEach(id => { html += `<p>Investigator ${players[id].label} has died.</p>`; });
+  html += `<button id="btn-deaths-continue" class="primary">Continue</button></div>`;
+  el('round-content').innerHTML = html;
+  el('btn-deaths-continue').addEventListener('click', () => continueFromDeaths(myRoomCode));
 }
 
-el('btn-deaths-continue').addEventListener('click', () => {
-  state.pendingDeaths = [];
-  goPhase('mission');
-});
+async function continueFromDeaths(code) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'deaths') return room;
+    room.pendingDeaths = null;
+    const players = obj(room.players), secrets = obj(room.secrets);
+    const eligible = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && !secrets[id].skipNextMission);
+    const leaderId = eligible[Math.floor(Math.random() * eligible.length)];
+    room.mission = { leaderId, teamIds: { [leaderId]: true }, result: null, step: 'team' };
+    room.phase = 'mission';
+    return room;
+  });
+}
 
 /* ---------------- MISSION PHASE ---------------- */
 
-function eligibleForMission() {
-  return state.players.filter(p => p.alive && !p.skipNextMission);
-}
+function renderMissionPhase(room) {
+  const m = obj(room.mission);
+  const players = obj(room.players);
+  const secrets = obj(room.secrets);
+  const leader = players[m.leaderId];
+  const isLeader = m.leaderId === myPlayerId;
 
-function renderMission() {
-  if (state.missionLeaderId === null) {
-    const pool = eligibleForMission();
-    const leader = pool[Math.floor(Math.random() * pool.length)];
-    state.missionLeaderId = leader.id;
-    state.missionTeamIds = [leader.id];
+  let html = `<h2>Mission Phase</h2><div class="card">`;
+  html += `<p><strong>Leading Investigator: ${leader ? leader.label + ' — ' + esc(leader.name) : '...'}</strong></p>`;
+
+  if (m.step === 'team') {
+    if (isLeader) {
+      html += `<p class="hint">Choose the players joining this meeting (you're included automatically). Your physical mission card tells you how many are required.</p>`;
+      const eligible = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && !secrets[id].skipNextMission);
+      const teamIds = obj(m.teamIds);
+      html += `<div id="mission-team-list">`;
+      eligible.forEach(id => {
+        const selected = !!teamIds[id];
+        const locked = id === m.leaderId;
+        html += `<button class="choice ${selected ? 'selected' : ''}" data-id="${id}" ${locked ? 'disabled' : ''}>${selected ? '✓ ' : ''}${players[id].label} — ${esc(players[id].name)}${locked ? ' (leader)' : ''}</button>`;
+      });
+      html += `</div><button id="btn-mission-confirm" class="primary">Confirm Team</button>`;
+    } else {
+      html += `<p class="waiting">Waiting for ${leader ? leader.label : '...'} to choose the mission team...</p>`;
+    }
+  } else if (m.step === 'result') {
+    const teamIds = Object.keys(obj(m.teamIds));
+    html += `<p class="hint">Team: ${teamIds.map(id => players[id].label).join(', ')}</p>`;
+    if (isLeader) {
+      html += `<p>Play mission cards face-down now. Enter the outcome once compared to the requirement:</p>
+        <button id="btn-mission-success" class="primary">Mission Succeeds (L +1)</button>
+        <button id="btn-mission-fail" class="danger">Mission Fails (Kira +1)</button>`;
+    } else {
+      html += `<p class="waiting">Waiting for ${leader.label} to report the mission result...</p>`;
+    }
+  } else if (m.step === 'share') {
+    const teamIds = Object.keys(obj(m.teamIds));
+    const onMission = teamIds.includes(myPlayerId);
+    html += `<p><strong>Mission ${m.result === 'success' ? 'succeeded! L +1' : 'failed! Kira +1'}</strong></p>`;
+    html += onMission
+      ? `<p class="hint">You were on this mission — share one of your secret names (first or last) with another player who was also on it.</p>`
+      : `<p class="hint">Players on the mission are sharing a secret name with each other.</p>`;
+    html += `<button id="btn-mission-done" class="primary">Continue</button>`;
   }
-  const leader = findPlayer(state.missionLeaderId);
-  el('mission-leader-box').innerHTML = `<p><strong>Leading Investigator: ${leader.label} (${leader.name})</strong></p>
-    <p class="hint">Choose the players joining this meeting. Your physical mission card tells you how many are required (3-8, leader included).</p>`;
+  html += `</div>`;
+  el('round-content').innerHTML = html;
 
-  const pool = eligibleForMission();
-  el('mission-team-select').innerHTML = pool.map(p => {
-    const selected = state.missionTeamIds.includes(p.id);
-    const locked = p.id === leader.id;
-    return `<button class="choice ${selected ? 'selected' : ''}" data-id="${p.id}" ${locked ? 'disabled' : ''}>
-      ${selected ? '✓ ' : ''}${p.label} — ${p.name}${locked ? ' (leader)' : ''}
-    </button>`;
-  }).join('');
-
-  document.querySelectorAll('#mission-team-select .choice').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = parseInt(btn.dataset.id, 10);
-      const idx = state.missionTeamIds.indexOf(id);
-      if (idx === -1) state.missionTeamIds.push(id); else state.missionTeamIds.splice(idx, 1);
-      renderMission();
+  if (m.step === 'team' && isLeader) {
+    document.querySelectorAll('#mission-team-list .choice').forEach(btn => {
+      btn.addEventListener('click', () => toggleMissionTeam(myRoomCode, btn.dataset.id));
     });
+    el('btn-mission-confirm').addEventListener('click', () => confirmMissionTeam(myRoomCode));
+  }
+  if (m.step === 'result' && isLeader) {
+    el('btn-mission-success').addEventListener('click', () => submitMissionResult(myRoomCode, true));
+    el('btn-mission-fail').addEventListener('click', () => submitMissionResult(myRoomCode, false));
+  }
+  if (m.step === 'share') {
+    el('btn-mission-done').addEventListener('click', () => continueFromMissionShare(myRoomCode));
+  }
+}
+
+async function toggleMissionTeam(code, playerId) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'mission' || room.mission.step !== 'team') return room;
+    if (playerId === room.mission.leaderId) return room;
+    room.mission.teamIds = obj(room.mission.teamIds);
+    if (room.mission.teamIds[playerId]) delete room.mission.teamIds[playerId];
+    else room.mission.teamIds[playerId] = true;
+    return room;
   });
-
-  el('btn-mission-confirm-team').classList.toggle('hidden', state.missionTeamIds.length < 1);
-  el('mission-result-box').classList.add('hidden');
-  el('mission-shared-name-box').classList.add('hidden');
 }
-
-el('btn-mission-confirm-team').addEventListener('click', () => {
-  el('mission-team-select').classList.add('hidden');
-  el('btn-mission-confirm-team').classList.add('hidden');
-  el('mission-result-box').classList.remove('hidden');
-});
-
-function resolveMission(success) {
-  state.missionResult = success ? 'success' : 'fail';
-  if (success) state.lScore += 1; else state.kiraScore += 1;
-  updateHeader();
-  if (checkWin()) return;
-  el('mission-result-box').classList.add('hidden');
-  el('mission-shared-name-box').classList.remove('hidden');
+async function confirmMissionTeam(code) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'mission' || room.mission.step !== 'team') return room;
+    room.mission.step = 'result';
+    return room;
+  });
 }
-
-el('btn-mission-success').addEventListener('click', () => resolveMission(true));
-el('btn-mission-fail').addEventListener('click', () => resolveMission(false));
-
-el('btn-mission-done').addEventListener('click', () => {
-  state.players.forEach(p => { if (p.skipNextMission) p.skipNextMission = false; });
-  goPhase('voting');
-});
+async function submitMissionResult(code, success) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'mission' || room.mission.step !== 'result') return room;
+    room.mission.result = success ? 'success' : 'fail';
+    if (success) room.lScore = (room.lScore || 0) + 1; else room.kiraScore = (room.kiraScore || 0) + 1;
+    room.mission.step = 'share';
+    applyWinCheck(room);
+    return room;
+  });
+}
+async function continueFromMissionShare(code) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'mission' || room.mission.step !== 'share') return room;
+    const secrets = obj(room.secrets);
+    Object.keys(secrets).forEach(id => { if (secrets[id].skipNextMission) secrets[id].skipNextMission = false; });
+    room.phase = 'voting';
+    room.voting = { resolved: false };
+    return room;
+  });
+}
 
 /* ---------------- VOTING PHASE ---------------- */
 
-function renderVoting() {
-  if (state.votingOrder === null) {
-    state.votingOrder = alivePlayers().map(p => p.id);
-    state.votingIndex = 0;
-    state.votes = {};
-  }
-  el('voting-result-box').classList.add('hidden');
-  const box = el('voting-ballot-box');
+function renderVotingPhase(room) {
+  const players = obj(room.players);
+  const secrets = obj(room.secrets);
+  const voting = obj(room.voting);
+  const votes = obj(voting.votes);
+  const aliveIds = Object.keys(players).filter(id => secrets[id] && secrets[id].alive);
 
-  if (state.votingIndex < state.votingOrder.length) {
-    box.classList.remove('hidden');
-    const voter = findPlayer(state.votingOrder[state.votingIndex]);
-    box.innerHTML = `<p class="pass-text">Pass to Investigator ${voter.label}. Everyone else, look away.</p>
-      <button id="btn-show-ballot" class="primary">I'm ${voter.label} — Show My Ballot</button>
-      <div id="ballot-choices" class="hidden"></div>`;
+  let html = `<h2>Voting Phase</h2><div class="card">`;
 
-    el('btn-show-ballot').addEventListener('click', () => {
-      el('btn-show-ballot').classList.add('hidden');
-      const choicesBox = el('ballot-choices');
-      choicesBox.classList.remove('hidden');
-      const others = alivePlayers().filter(p => p.id !== voter.id);
-      choicesBox.innerHTML = others.map(p =>
-        `<button class="choice" data-target="${p.id}">Vote: ${p.label} — ${p.name}</button>`
-      ).join('') + `<button class="choice" data-target="skip">Skip</button>`;
-
-      choicesBox.querySelectorAll('.choice').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const t = btn.dataset.target;
-          state.votes[voter.id] = t === 'skip' ? 'skip' : parseInt(t, 10);
-          state.votingIndex++;
-          renderVoting();
-        });
+  if (!voting.resolved) {
+    const amAlive = secrets[myPlayerId] && secrets[myPlayerId].alive;
+    if (!amAlive) {
+      html += `<p class="waiting">You're out — watching the vote unfold. (${Object.keys(votes).length}/${aliveIds.length} voted)</p>`;
+    } else if (votes[myPlayerId] !== undefined) {
+      html += `<p class="waiting">Vote cast. Waiting for others... (${Object.keys(votes).length}/${aliveIds.length} voted)</p>`;
+    } else {
+      html += `<p class="hint">Vote to arrest a player, or skip.</p><div id="vote-choices">`;
+      aliveIds.filter(id => id !== myPlayerId).forEach(id => {
+        html += `<button class="choice" data-target="${id}">${players[id].label} — ${esc(players[id].name)}</button>`;
       });
+      html += `<button class="choice" data-target="skip">Skip</button></div>`;
+    }
+  } else {
+    const tally = {};
+    aliveIds.forEach(id => { const v = votes[id]; tally[v] = (tally[v] || 0) + 1; });
+    html += `<h3>Vote Tally</h3>`;
+    Object.entries(tally).forEach(([k, c]) => {
+      const label = k === 'skip' ? 'Skip' : (players[k] ? `${players[k].label} — ${esc(players[k].name)}` : k);
+      html += `<div class="player-row"><span>${label}</span><span>${c} vote(s)</span></div>`;
+    });
+    if (!voting.arrestedId) {
+      html += `<p><strong>No majority reached — no one is arrested.</strong></p>`;
+    } else {
+      const arrested = players[voting.arrestedId];
+      const arrestedSecret = secrets[voting.arrestedId];
+      html += `<p><strong>Investigator ${arrested.label} has been arrested.</strong></p>
+        <p>They must reveal their secret identity: <strong>${arrestedSecret.firstName} ${arrestedSecret.lastName}</strong></p>
+        <p class="hint">${arrested.label} will sit out the next mission and next Information Phase.</p>`;
+    }
+    html += `<button id="btn-voting-continue" class="primary">Continue</button>`;
+  }
+  html += `</div>`;
+  el('round-content').innerHTML = html;
+
+  if (!voting.resolved) {
+    document.querySelectorAll('#vote-choices .choice').forEach(btn => {
+      btn.addEventListener('click', () => castVote(myRoomCode, btn.dataset.target));
     });
   } else {
-    box.classList.add('hidden');
-    resolveVoting();
+    el('btn-voting-continue').addEventListener('click', () => continueFromVotingResult(myRoomCode));
   }
+
+  maybeResolveVoting(room, myRoomCode);
 }
 
-function resolveVoting() {
-  const tally = {};
-  Object.values(state.votes).forEach(v => { tally[v] = (tally[v] || 0) + 1; });
-  const totalVoters = state.votingOrder.length;
-
-  let topTarget = null, topCount = 0;
-  Object.entries(tally).forEach(([k, c]) => {
-    if (k !== 'skip' && c > topCount) { topCount = c; topTarget = parseInt(k, 10); }
+async function castVote(code, targetOrSkip) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'voting' || room.voting.resolved) return room;
+    if (!room.secrets[myPlayerId] || !room.secrets[myPlayerId].alive) return room;
+    room.voting.votes = obj(room.voting.votes);
+    room.voting.votes[myPlayerId] = targetOrSkip;
+    return room;
   });
+}
 
-  const tallyLines = Object.entries(tally).map(([k, c]) => {
-    const name = k === 'skip' ? 'Skip' : (() => { const p = findPlayer(parseInt(k, 10)); return `${p.label} — ${p.name}`; })();
-    return `<div class="player-row"><span>${name}</span><span>${c} vote(s)</span></div>`;
-  }).join('');
+async function maybeResolveVoting(room, code) {
+  const voting = obj(room.voting);
+  if (room.phase !== 'voting' || voting.resolved) return;
+  const players = obj(room.players), secrets = obj(room.secrets);
+  const aliveIds = Object.keys(players).filter(id => secrets[id] && secrets[id].alive);
+  const votes = obj(voting.votes);
+  if (!aliveIds.every(id => votes[id] !== undefined)) return;
 
-  const resultBox = el('voting-result-box');
-  resultBox.classList.remove('hidden');
+  await runTransaction(ref(db, `rooms/${code}`), (r) => {
+    if (!r || r.phase !== 'voting' || r.voting.resolved) return r;
+    const p = obj(r.players), s = obj(r.secrets), v = obj(r.voting.votes);
+    const alive2 = Object.keys(p).filter(id => s[id] && s[id].alive);
+    if (!alive2.every(id => v[id] !== undefined)) return r;
 
-  const arrested = (topTarget !== null && topCount > totalVoters / 2) ? findPlayer(topTarget) : null;
+    const tally = {};
+    alive2.forEach(id => { const vote = v[id]; tally[vote] = (tally[vote] || 0) + 1; });
+    let topId = null, topCount = 0;
+    Object.entries(tally).forEach(([k, c]) => { if (k !== 'skip' && c > topCount) { topCount = c; topId = k; } });
+    const arrested = (topId && topCount > alive2.length / 2) ? topId : null;
 
-  let outcomeHtml = `<h3>Vote Tally</h3>${tallyLines}`;
+    r.voting.resolved = true;
+    r.voting.arrestedId = arrested;
+    if (arrested) {
+      s[arrested].skipNextMission = true;
+      s[arrested].skipNextInfo = true;
+      if (s[arrested].role === 'Kira') {
+        r.endgame = { active: true, resolved: false };
+      }
+    }
+    return r;
+  });
+}
 
-  if (!arrested) {
-    outcomeHtml += `<p><strong>No majority reached — no one is arrested.</strong></p>
-      <button id="btn-voting-continue" class="primary">Continue</button>`;
-    resultBox.innerHTML = outcomeHtml;
-    el('btn-voting-continue').addEventListener('click', () => goPhase('information'));
-    return;
-  }
-
-  arrested.skipNextMission = true;
-  arrested.skipNextInfo = true;
-
-  if (arrested.role === 'Kira') {
-    outcomeHtml += `<p><strong>Investigator ${arrested.label} has been arrested... and it was KIRA!</strong></p>
-      <button id="btn-voting-continue" class="primary">Continue to Final Guess</button>`;
-    resultBox.innerHTML = outcomeHtml;
-    el('btn-voting-continue').addEventListener('click', showEndgameGuess);
-    return;
-  }
-
-  outcomeHtml += `<p><strong>Investigator ${arrested.label} has been arrested.</strong></p>
-    <p>They must reveal their secret identity: <strong>${arrested.firstName} ${arrested.lastName}</strong></p>
-    <p class="hint">${arrested.label} will sit out the next mission and the next Information Phase.</p>
-    <button id="btn-voting-continue" class="primary">Continue</button>`;
-  resultBox.innerHTML = outcomeHtml;
-  el('btn-voting-continue').addEventListener('click', () => goPhase('information'));
+async function continueFromVotingResult(code) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'voting' || !room.voting.resolved) return room;
+    if (room.endgame && room.endgame.active) return room;
+    room.phase = 'information';
+    room.info = { step: null, swappedThisPhase: false };
+    return room;
+  });
 }
 
 /* ---------------- ENDGAME: KIRA ARRESTED ---------------- */
 
-function showEndgameGuess() {
-  showScreen('screen-endgame-guess');
-  const form = el('endgame-guess-form');
-  const candidates = alivePlayers().filter(p => p.id !== state.kiraPlayerId && p.id !== state.followerPlayerId);
-  form.innerHTML = `
-    <label>Who is L?</label>
-    <select id="guess-who">${candidates.map(p => `<option value="${p.id}">${p.label} — ${p.name}</option>`).join('')}</select>
-    <label>Guess their first name</label>
-    <select id="guess-first">${FIRST_NAMES.map(n => `<option value="${n}">${n}</option>`).join('')}</select>
-    <label>Guess their last name</label>
-    <select id="guess-last">${LAST_NAMES.map(n => `<option value="${n}">${n}</option>`).join('')}</select>
-    <button id="btn-endgame-submit" class="primary">Submit Final Guess</button>`;
+function renderEndgame(room) {
+  const players = obj(room.players);
+  const secrets = obj(room.secrets);
+  const arrested = players[room.voting.arrestedId];
 
-  el('btn-endgame-submit').addEventListener('click', () => {
-    const whoId = parseInt(el('guess-who').value, 10);
-    const first = el('guess-first').value;
-    const last = el('guess-last').value;
-    const lPlayer = findPlayer(state.lPlayerId);
-    if (whoId === lPlayer.id && first === lPlayer.firstName && last === lPlayer.lastName) {
-      endGame('Kira', `Kira's team correctly identified L: Investigator ${lPlayer.label}, ${lPlayer.firstName} ${lPlayer.lastName}.`);
+  let html = `<h2>Kira Has Been Arrested</h2><div class="card pass-card">
+    <p><strong>Investigator ${arrested.label} was Kira!</strong></p>`;
+
+  const amGuesser = myPlayerId === room.kiraPlayerId || myPlayerId === room.followerPlayerId;
+  if (amGuesser) {
+    const candidates = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && id !== room.kiraPlayerId && id !== room.followerPlayerId);
+    html += `<p class="hint">You get one shared guess: who is L, and what's their secret name?</p>
+      <label>Who is L?</label>
+      <select id="guess-who">${candidates.map(id => `<option value="${id}">${players[id].label} — ${esc(players[id].name)}</option>`).join('')}</select>
+      <label>Guess their first name</label>
+      <select id="guess-first">${FIRST_NAMES.map(n => `<option value="${n}">${n}</option>`).join('')}</select>
+      <label>Guess their last name</label>
+      <select id="guess-last">${LAST_NAMES.map(n => `<option value="${n}">${n}</option>`).join('')}</select>
+      <button id="btn-endgame-submit" class="primary">Submit Final Guess</button>`;
+  } else {
+    html += `<p class="waiting">Kira and the Follower are making their final guess...</p>`;
+  }
+  html += `</div>`;
+  el('round-content').innerHTML = html;
+
+  if (amGuesser) {
+    el('btn-endgame-submit').addEventListener('click', () => {
+      const whoId = el('guess-who').value;
+      const first = el('guess-first').value;
+      const last = el('guess-last').value;
+      submitEndgameGuess(myRoomCode, whoId, first, last);
+    });
+  }
+}
+
+async function submitEndgameGuess(code, whoId, first, last) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || !room.endgame || !room.endgame.active || room.endgame.resolved) return room;
+    const l = room.secrets[room.lPlayerId];
+    room.endgame.resolved = true;
+    room.status = 'gameover';
+    if (whoId === room.lPlayerId && first === l.firstName && last === l.lastName) {
+      room.gameOverInfo = { winner: 'Kira', reason: `Kira's team correctly identified L: Investigator ${room.players[room.lPlayerId].label}, ${l.firstName} ${l.lastName}.` };
     } else {
-      endGame('L', `Kira's team guessed wrong. L was actually Investigator ${lPlayer.label} — ${lPlayer.firstName} ${lPlayer.lastName}.`);
+      room.gameOverInfo = { winner: 'L', reason: `Kira's team guessed wrong. L was actually Investigator ${room.players[room.lPlayerId].label} — ${l.firstName} ${l.lastName}.` };
     }
+    return room;
   });
 }
 
 /* ---------------- INFORMATION PHASE ---------------- */
 
-function renderInfo() {
-  if (state.infoStep === null) {
-    const lPlayer = findPlayer(state.lPlayerId);
-    if (lPlayer.alive && !lPlayer.skipNextInfo) {
-      state.infoStep = 'l-pass';
+function renderInformationPhase(room) {
+  const players = obj(room.players);
+  const secrets = obj(room.secrets);
+  const info = obj(room.info);
+
+  // Preserve any in-progress kill-guess form selections across re-renders, since
+  // this panel is viewed by two separate devices (Kira + Follower) at once, and
+  // one device's action (e.g. swapping the Death Note) shouldn't wipe out the
+  // other device's half-filled guess.
+  const prevKillTarget = el('kill-target') ? el('kill-target').value : null;
+  const prevKillFirst = el('kill-first') ? el('kill-first').value : null;
+  const prevKillLast = el('kill-last') ? el('kill-last').value : null;
+
+  let html = `<h2>Information Phase</h2><div class="card pass-card">`;
+
+  if (!info.step) {
+    html += `<p class="waiting">Starting the Information Phase...</p>`;
+  } else if (info.step === 'l') {
+    if (myPlayerId === room.lPlayerId) {
+      const suspectIds = Object.keys(obj(info.lSuspects));
+      if (suspectIds.length === 0) {
+        html += `<button id="btn-l-reveal" class="primary">Reveal My 4 Suspects</button>`;
+      } else {
+        html += `<p><strong>4 Suspects — one of them is Kira:</strong></p>`;
+        suspectIds.forEach(id => { html += `<div class="player-row"><span>${players[id].label} — ${esc(players[id].name)}</span></div>`; });
+        html += `<p class="hint">Kira's Follower has an equal chance of appearing here as any other Investigator.</p>
+          <button id="btn-l-done" class="primary">Done</button>`;
+      }
     } else {
-      if (lPlayer.skipNextInfo) lPlayer.skipNextInfo = false;
-      state.infoStep = 'kira-pass';
+      html += `<p class="waiting">Everyone else, close your eyes. L is reviewing suspects...</p>`;
     }
-    state.didSwapThisInfoPhase = false;
+  } else if (info.step === 'kira') {
+    const amKiraTeam = myPlayerId === room.kiraPlayerId || myPlayerId === room.followerPlayerId;
+    if (amKiraTeam) {
+      const kira = players[room.kiraPlayerId], follower = players[room.followerPlayerId];
+      html += `<p><strong>Kira:</strong> ${kira.label} — ${esc(kira.name)} &nbsp; <strong>Follower:</strong> ${follower.label} — ${esc(follower.name)}</p>
+        <p class="hint">Share what you learned during the Mission Phase and strategize.</p><hr>`;
+
+      const canSwap = !room.lastInfoPhaseSwapped && !info.swappedThisPhase;
+      if (info.swappedThisPhase) html += `<p class="hint">The Death Note was swapped this phase.</p>`;
+      else if (canSwap) html += `<button id="btn-swap-note" class="secondary">Swap the Death Note (Kira ⇄ Follower)</button>`;
+      else html += `<p class="hint">The Death Note was swapped last time — cannot swap again this round.</p>`;
+
+      html += `<hr><p><strong>Write a name in the Death Note?</strong></p>`;
+      const targets = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && !secrets[id].immune && id !== room.kiraPlayerId && id !== room.followerPlayerId);
+      if (targets.length === 0) {
+        html += `<p class="hint">No valid targets remain.</p>`;
+      } else {
+        html += `<label>Target</label>
+          <select id="kill-target">${targets.map(id => `<option value="${id}">${players[id].label} — ${esc(players[id].name)}</option>`).join('')}</select>
+          <label>Guess first name</label>
+          <select id="kill-first">${FIRST_NAMES.map(n => `<option value="${n}">${n}</option>`).join('')}</select>
+          <label>Guess last name</label>
+          <select id="kill-last">${LAST_NAMES.map(n => `<option value="${n}">${n}</option>`).join('')}</select>
+          <button id="btn-kill-submit" class="danger">Submit Guess</button>`;
+      }
+      html += `<hr><button id="btn-info-finish" class="primary">Finished — Continue</button>`;
+    } else {
+      html += `<p class="waiting">Kira and the Follower are strategizing. Everyone else, keep your eyes closed...</p>`;
+    }
   }
+  html += `</div>`;
+  el('round-content').innerHTML = html;
 
-  const box = el('info-content');
-
-  if (state.infoStep === 'l-pass') {
-    box.innerHTML = `<p class="pass-text">Pass the device to L. Everyone else, close your eyes.</p>
-      <button id="btn-l-reveal" class="primary">L: Reveal Suspects</button>`;
-    el('btn-l-reveal').addEventListener('click', () => {
-      const kira = findPlayer(state.kiraPlayerId);
-      const pool = alivePlayers().filter(p => p.id !== state.lPlayerId && p.id !== kira.id);
-      const others = shuffle(pool).slice(0, 3);
-      state.lSuspects = shuffle([kira, ...others]).map(p => p.id);
-      state.infoStep = 'l-view';
-      renderInfo();
-    });
-    return;
+  if (info.step === 'l' && myPlayerId === room.lPlayerId) {
+    const suspectIds = Object.keys(obj(info.lSuspects));
+    if (suspectIds.length === 0) el('btn-l-reveal').addEventListener('click', () => lRevealSuspects(myRoomCode));
+    else el('btn-l-done').addEventListener('click', () => lDoneViewing(myRoomCode));
   }
+  if (info.step === 'kira' && (myPlayerId === room.kiraPlayerId || myPlayerId === room.followerPlayerId)) {
+    const targetSel = el('kill-target'), firstSel = el('kill-first'), lastSel = el('kill-last');
+    if (targetSel && prevKillTarget && [...targetSel.options].some(o => o.value === prevKillTarget)) targetSel.value = prevKillTarget;
+    if (firstSel && prevKillFirst) firstSel.value = prevKillFirst;
+    if (lastSel && prevKillLast) lastSel.value = prevKillLast;
 
-  if (state.infoStep === 'l-view') {
-    const suspects = state.lSuspects.map(id => findPlayer(id));
-    box.innerHTML = `<p><strong>4 Suspects — one of them is Kira:</strong></p>
-      ${suspects.map(p => `<div class="player-row"><span>${p.label} — ${p.name}</span></div>`).join('')}
-      <p class="hint">Write these down if you'd like. Kira's Follower has an equal chance of appearing here as any other Investigator.</p>
-      <button id="btn-l-done" class="primary">Done — Hide &amp; Pass</button>`;
-    el('btn-l-done').addEventListener('click', () => {
-      state.infoStep = 'kira-pass';
-      renderInfo();
-    });
-    return;
-  }
-
-  if (state.infoStep === 'kira-pass') {
-    const follower = findPlayer(state.followerPlayerId);
-    const note = follower.skipNextInfo ? `<p class="hint">Kira's Follower is arrested and sits out this phase.</p>` : '';
-    box.innerHTML = `<p class="pass-text">Pass the device to Kira${follower.skipNextInfo ? '' : ' and the Follower'}. Everyone else, close your eyes.</p>
-      ${note}
-      <button id="btn-kira-reveal" class="primary">Reveal</button>`;
-    el('btn-kira-reveal').addEventListener('click', () => {
-      if (follower.skipNextInfo) follower.skipNextInfo = false;
-      state.infoStep = 'kira-view';
-      renderInfo();
-    });
-    return;
-  }
-
-  if (state.infoStep === 'kira-view') {
-    renderKiraView(box);
-    return;
-  }
-}
-
-function renderKiraView(box) {
-  const kira = findPlayer(state.kiraPlayerId);
-  const follower = findPlayer(state.followerPlayerId);
-  const canSwap = !state.lastInfoPhaseSwapped && !state.didSwapThisInfoPhase;
-
-  const targets = alivePlayers().filter(p => p.id !== kira.id && p.id !== follower.id && !p.immune);
-
-  let html = `<p><strong>Kira:</strong> ${kira.label} — ${kira.name} &nbsp; <strong>Follower:</strong> ${follower.label} — ${follower.name}</p>
-    <p class="hint">Share what you learned during the Mission Phase and strategize.</p>
-    <hr>`;
-
-  if (state.didSwapThisInfoPhase) {
-    html += `<p class="hint">The Death Note was swapped this phase.</p>`;
-  } else if (canSwap) {
-    html += `<button id="btn-swap-note" class="secondary">Swap the Death Note (Kira ⇄ Follower)</button>`;
-  } else {
-    html += `<p class="hint">The Death Note was swapped last time — cannot swap again this round.</p>`;
-  }
-
-  html += `<hr><p><strong>Write a name in the Death Note?</strong></p>`;
-  if (targets.length === 0) {
-    html += `<p class="hint">No valid targets remain.</p>`;
-  } else {
-    html += `
-      <label>Target</label>
-      <select id="kill-target">${targets.map(p => `<option value="${p.id}">${p.label} — ${p.name}</option>`).join('')}</select>
-      <label>Guess first name</label>
-      <select id="kill-first">${FIRST_NAMES.map(n => `<option value="${n}">${n}</option>`).join('')}</select>
-      <label>Guess last name</label>
-      <select id="kill-last">${LAST_NAMES.map(n => `<option value="${n}">${n}</option>`).join('')}</select>
-      <button id="btn-kill-submit" class="danger">Submit Guess</button>
-      <div id="kill-result"></div>`;
-  }
-
-  html += `<hr><button id="btn-info-finish" class="primary">Finished — Continue</button>`;
-  box.innerHTML = html;
-
-  const swapBtn = el('btn-swap-note');
-  if (swapBtn) {
-    swapBtn.addEventListener('click', () => {
-      kira.role = 'KiraFollower';
-      follower.role = 'Kira';
-      state.kiraPlayerId = follower.id;
-      state.followerPlayerId = kira.id;
-      state.didSwapThisInfoPhase = true;
-      renderKiraView(box);
-    });
-  }
-
-  const killBtn = el('btn-kill-submit');
-  if (killBtn) {
-    killBtn.addEventListener('click', () => {
-      const targetId = parseInt(el('kill-target').value, 10);
-      const target = findPlayer(targetId);
+    const swapBtn = el('btn-swap-note');
+    if (swapBtn) swapBtn.addEventListener('click', () => swapDeathNote(myRoomCode));
+    const killBtn = el('btn-kill-submit');
+    if (killBtn) killBtn.addEventListener('click', async () => {
+      const targetId = el('kill-target').value;
       const first = el('kill-first').value;
       const last = el('kill-last').value;
-      let resultMsg;
-      let killed = false;
-      if (first === target.firstName && last === target.lastName) {
-        target.alive = false;
-        state.pendingDeaths.push(target.id);
-        state.kiraScore += 2;
-        updateHeader();
-        resultMsg = `<p><strong>Correct! ${target.label} has been killed.</strong></p>`;
-        killed = true;
-      } else {
-        target.wrongGuessCount++;
-        resultMsg = `<p>Wrong. ${target.label} survives.</p>`;
-        if (target.wrongGuessCount >= 2) {
-          target.immune = true;
-          resultMsg += `<p class="hint">${target.label} has been guessed wrong twice and is now immune for the rest of the game.</p>`;
-        }
-      }
-      if (killed && checkWin()) return;
-      renderKiraView(box);
-      el('kill-result').innerHTML = resultMsg;
+      const msg = await submitKillGuess(myRoomCode, targetId, first, last);
+      showToast(msg);
     });
+    el('btn-info-finish').addEventListener('click', () => finishInfoPhase(myRoomCode));
   }
 
-  el('btn-info-finish').addEventListener('click', () => {
-    state.lastInfoPhaseSwapped = state.didSwapThisInfoPhase;
-    nextRound();
+  maybeInitInfo(room, myRoomCode);
+}
+
+async function maybeInitInfo(room, code) {
+  if (room.phase !== 'information' || obj(room.info).step) return;
+  await runTransaction(ref(db, `rooms/${code}`), (r) => {
+    if (!r || r.phase !== 'information' || obj(r.info).step) return r;
+    const l = r.secrets[r.lPlayerId];
+    if (l && l.alive && !l.skipNextInfo) {
+      r.info.step = 'l';
+    } else {
+      if (l && l.skipNextInfo) l.skipNextInfo = false;
+      r.info.step = 'kira';
+    }
+    return r;
   });
 }
 
-/* ---------------- WIN CHECK ---------------- */
-
-function checkWin() {
-  if (state.kiraScore >= 10) { endGame('Kira', "Kira's team reached 10 points."); return true; }
-  if (state.lScore >= 10) { endGame('L', "L's team reached 10 points."); return true; }
-  const lPlayer = findPlayer(state.lPlayerId);
-  if (!lPlayer.alive) { endGame('Kira', 'L has been killed.'); return true; }
-  return false;
+async function lRevealSuspects(code) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'information' || room.info.step !== 'l') return room;
+    if (Object.keys(obj(room.info.lSuspects)).length > 0) return room;
+    const players = obj(room.players), secrets = obj(room.secrets);
+    const kiraId = room.kiraPlayerId;
+    const pool = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && id !== room.lPlayerId && id !== kiraId);
+    const others = shuffle(pool).slice(0, 3);
+    const four = shuffle([kiraId, ...others]);
+    room.info.lSuspects = {};
+    four.forEach(id => { room.info.lSuspects[id] = true; });
+    return room;
+  });
+}
+async function lDoneViewing(code) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'information' || room.info.step !== 'l') return room;
+    room.info.step = 'kira';
+    return room;
+  });
 }
 
-function endGame(winner, reason) {
-  state.gameOver = { winner, reason };
-  showScreen('screen-gameover');
-  el('gameover-heading').textContent = winner === 'Kira' ? 'KIRA WINS' : "L'S TEAM WINS";
-  el('gameover-heading').style.color = winner === 'Kira' ? 'var(--red-bright)' : 'var(--gold)';
-  el('gameover-reason').textContent = reason;
-  el('gameover-reveal').innerHTML = `<h3>Full Reveal</h3>` + state.players.map(p => {
-    const status = !p.alive ? '<span class="tag dead">dead</span>' : '';
-    return `<div class="player-row"><span>${p.label} — ${p.name}${status}</span><span>${p.role} · ${p.firstName} ${p.lastName}</span></div>`;
-  }).join('');
+async function swapDeathNote(code) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'information' || room.info.step !== 'kira') return room;
+    if (room.lastInfoPhaseSwapped || room.info.swappedThisPhase) return room;
+    const kId = room.kiraPlayerId, fId = room.followerPlayerId;
+    room.secrets[kId].role = 'KiraFollower';
+    room.secrets[fId].role = 'Kira';
+    room.kiraPlayerId = fId;
+    room.followerPlayerId = kId;
+    room.info.swappedThisPhase = true;
+    return room;
+  });
 }
 
-el('btn-restart').addEventListener('click', () => {
-  location.reload();
-});
+async function submitKillGuess(code, targetId, first, last) {
+  const before = currentRoomData.secrets && currentRoomData.secrets[targetId];
+  if (!before || !before.alive || before.immune) {
+    return '<p class="hint">That target is no longer available — pick another.</p>';
+  }
+  const result = await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'information' || room.info.step !== 'kira') return room;
+    const target = room.secrets[targetId];
+    if (!target || !target.alive || target.immune) return room;
+    if (first === target.firstName && last === target.lastName) {
+      target.alive = false;
+      room.pendingDeaths = obj(room.pendingDeaths);
+      room.pendingDeaths[targetId] = true;
+      room.kiraScore = (room.kiraScore || 0) + 2;
+      applyWinCheck(room);
+    } else {
+      target.wrongGuessCount = (target.wrongGuessCount || 0) + 1;
+      if (target.wrongGuessCount >= 2) target.immune = true;
+    }
+    return room;
+  });
+  if (!result.committed || !result.snapshot.exists()) {
+    return '<p>Something went wrong, try again.</p>';
+  }
+  const newRoom = result.snapshot.val();
+  const target = newRoom.secrets[targetId];
+  const targetLabel = newRoom.players[targetId].label;
+  if (before.alive && !target.alive) {
+    return `<p><strong>Correct! ${targetLabel} has been killed.</strong></p>`;
+  }
+  if (before.wrongGuessCount !== target.wrongGuessCount) {
+    let msg = `<p>Wrong. ${targetLabel} survives.</p>`;
+    if (target.immune && !before.immune) msg += `<p class="hint">${targetLabel} has been guessed wrong twice and is now immune for the rest of the game.</p>`;
+    return msg;
+  }
+  return '<p class="hint">That guess didn\'t go through (maybe someone else acted first) — try again.</p>';
+}
+
+async function finishInfoPhase(code) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'information' || room.info.step !== 'kira') return room;
+    room.lastInfoPhaseSwapped = !!room.info.swappedThisPhase;
+    room.round = (room.round || 1) + 1;
+    room.phase = 'deaths';
+    room.mission = { step: null };
+    room.voting = { resolved: false };
+    room.info = { step: null, swappedThisPhase: false };
+    return room;
+  });
+}
+
+/* ---------------- GAME OVER ---------------- */
+
+function renderGameOver(room) {
+  const players = obj(room.players);
+  const secrets = obj(room.secrets);
+  const info = obj(room.gameOverInfo);
+  let html = `<h1 class="title" style="color:${info.winner === 'Kira' ? 'var(--red-bright)' : 'var(--gold)'}">${info.winner === 'Kira' ? 'KIRA WINS' : "L'S TEAM WINS"}</h1>
+    <div class="card">
+      <p>${info.reason || ''}</p>
+      <h3>Full Reveal</h3>`;
+  Object.keys(players).sort().forEach(id => {
+    const s = secrets[id] || {};
+    const status = s.alive === false ? '<span class="tag dead">dead</span>' : '';
+    html += `<div class="player-row"><span>${players[id].label} — ${esc(players[id].name)}${status}</span><span>${s.role || ''} · ${s.firstName || ''} ${s.lastName || ''}</span></div>`;
+  });
+  html += `<button id="btn-new-game" class="primary">New Game</button></div>`;
+  el('gameover-content').innerHTML = html;
+  el('btn-new-game').addEventListener('click', () => {
+    clearSession();
+    location.reload();
+  });
+}

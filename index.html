@@ -9,30 +9,31 @@
 <body>
 <div id="app">
 
-  <!-- SETUP -->
-  <section id="screen-setup" class="screen">
+  <!-- LANDING: CREATE OR JOIN -->
+  <section id="screen-landing" class="screen">
     <h1 class="title">DEATH NOTE<br><span class="subtitle">Kira's Game</span></h1>
     <div class="card">
-      <label for="player-count">Number of Investigators (7–10)</label>
-      <input type="number" id="player-count" min="7" max="10" value="7">
-      <button id="btn-gen-names" class="secondary">Set Names</button>
-      <div id="player-name-inputs"></div>
-      <button id="btn-start-setup" class="primary">Deal Roles</button>
+      <div id="landing-error" class="error hidden"></div>
+      <label for="landing-name">Your name</label>
+      <input type="text" id="landing-name" placeholder="Your name" maxlength="20">
+
+      <button id="btn-create-game" class="primary">Create New Game</button>
+
+      <hr>
+      <label for="landing-code">Room code</label>
+      <input type="text" id="landing-code" placeholder="e.g. KIRA42" maxlength="6" style="text-transform:uppercase">
+      <button id="btn-join-game" class="secondary">Join Game</button>
     </div>
   </section>
 
-  <!-- ROLE / NAME REVEAL (pass-and-play) -->
+  <!-- LOBBY -->
+  <section id="screen-lobby" class="screen hidden">
+    <div id="lobby-content"></div>
+  </section>
+
+  <!-- ROLE REVEAL (own device, private) -->
   <section id="screen-reveal" class="screen hidden">
-    <h2 id="reveal-heading">Pass the device</h2>
-    <div class="card pass-card">
-      <p id="reveal-pass-text" class="pass-text"></p>
-      <button id="btn-reveal-show" class="primary">Reveal</button>
-      <div id="reveal-content" class="hidden">
-        <div class="role-box" id="reveal-role-box"></div>
-        <p class="hint">Memorize this. Don't let anyone else see.</p>
-        <button id="btn-reveal-next" class="primary">Hide &amp; Pass</button>
-      </div>
-    </div>
+    <div id="reveal-content2"></div>
   </section>
 
   <!-- MAIN ROUND SCREEN -->
@@ -41,67 +42,16 @@
       <div id="round-label">Round 1</div>
       <div id="score-label">L: 0 &nbsp;|&nbsp; Kira: 0</div>
     </header>
-
-    <!-- DEATHS -->
-    <div id="phase-deaths" class="phase-panel hidden">
-      <h2>Deaths Phase</h2>
-      <div id="deaths-content" class="card"></div>
-      <button id="btn-deaths-continue" class="primary">Continue</button>
-    </div>
-
-    <!-- MISSIONS -->
-    <div id="phase-mission" class="phase-panel hidden">
-      <h2>Mission Phase</h2>
-      <div class="card">
-        <div id="mission-leader-box"></div>
-        <div id="mission-team-select"></div>
-        <button id="btn-mission-confirm-team" class="primary hidden">Confirm Team</button>
-        <div id="mission-result-box" class="hidden">
-          <p>Play mission cards face-down now. Enter the outcome once cards are compared to the requirement:</p>
-          <button id="btn-mission-success" class="primary">Mission Succeeds (L +1)</button>
-          <button id="btn-mission-fail" class="danger">Mission Fails (Kira +1)</button>
-        </div>
-        <div id="mission-shared-name-box" class="hidden">
-          <p class="hint">Everyone on this mission must now share one of their secret names (first or last) with another player who was also on the mission.</p>
-          <button id="btn-mission-done" class="primary">Done Sharing — Continue</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- VOTING -->
-    <div id="phase-voting" class="phase-panel hidden">
-      <h2>Voting Phase</h2>
-      <div class="card pass-card" id="voting-ballot-box"></div>
-      <div class="card hidden" id="voting-result-box"></div>
-    </div>
-
-    <!-- INFORMATION -->
-    <div id="phase-information" class="phase-panel hidden">
-      <h2>Information Phase</h2>
-      <div class="card pass-card" id="info-content"></div>
-    </div>
-  </section>
-
-  <!-- KIRA ARRESTED ENDGAME -->
-  <section id="screen-endgame-guess" class="screen hidden">
-    <h2>Kira Has Been Arrested</h2>
-    <div class="card pass-card">
-      <p class="hint">Pass the device to Kira and the Kira Follower only. Everyone else look away.</p>
-      <div id="endgame-guess-form"></div>
-    </div>
+    <div id="round-content"></div>
   </section>
 
   <!-- GAME OVER -->
   <section id="screen-gameover" class="screen hidden">
-    <h1 id="gameover-heading" class="title"></h1>
-    <div class="card">
-      <p id="gameover-reason"></p>
-      <div id="gameover-reveal"></div>
-      <button id="btn-restart" class="primary">New Game</button>
-    </div>
+    <div id="gameover-content"></div>
   </section>
 
+  <div id="toast" class="toast hidden"></div>
 </div>
-<script src="app.js"></script>
+<script type="module" src="app.js"></script>
 </body>
 </html>
