@@ -375,21 +375,25 @@ function resolveVoting() {
 function showEndgameGuess() {
   showScreen('screen-endgame-guess');
   const form = el('endgame-guess-form');
+  const candidates = alivePlayers().filter(p => p.id !== state.kiraPlayerId && p.id !== state.followerPlayerId);
   form.innerHTML = `
-    <label>Guess L's first name</label>
+    <label>Who is L?</label>
+    <select id="guess-who">${candidates.map(p => `<option value="${p.id}">${p.label} — ${p.name}</option>`).join('')}</select>
+    <label>Guess their first name</label>
     <select id="guess-first">${FIRST_NAMES.map(n => `<option value="${n}">${n}</option>`).join('')}</select>
-    <label>Guess L's last name</label>
+    <label>Guess their last name</label>
     <select id="guess-last">${LAST_NAMES.map(n => `<option value="${n}">${n}</option>`).join('')}</select>
     <button id="btn-endgame-submit" class="primary">Submit Final Guess</button>`;
 
   el('btn-endgame-submit').addEventListener('click', () => {
+    const whoId = parseInt(el('guess-who').value, 10);
     const first = el('guess-first').value;
     const last = el('guess-last').value;
     const lPlayer = findPlayer(state.lPlayerId);
-    if (first === lPlayer.firstName && last === lPlayer.lastName) {
-      endGame('Kira', `Kira's team correctly guessed L's identity: ${lPlayer.firstName} ${lPlayer.lastName}.`);
+    if (whoId === lPlayer.id && first === lPlayer.firstName && last === lPlayer.lastName) {
+      endGame('Kira', `Kira's team correctly identified L: Investigator ${lPlayer.label}, ${lPlayer.firstName} ${lPlayer.lastName}.`);
     } else {
-      endGame('L', `Kira's team guessed wrong. L was actually ${lPlayer.firstName} ${lPlayer.lastName}.`);
+      endGame('L', `Kira's team guessed wrong. L was actually Investigator ${lPlayer.label} — ${lPlayer.firstName} ${lPlayer.lastName}.`);
     }
   });
 }
