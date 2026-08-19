@@ -61,7 +61,15 @@ Each round has four phases, in order:
 2. **Missions** — the app randomly picks a Leading Investigator, who
    selects teammates for the mission (team size comes from your physical
    mission cards, typically 3–8). Enter the mission's pass/fail result
-   (determined by the physical cards) to award the point.
+   (determined by the physical cards) to award the point. Afterward, the
+   Leading Investigator chooses whether the team shares first names, last
+   names, or both — the app then pairs everyone on the mission up (each
+   person learns exactly one teammate's name, and has their own name
+   learned by exactly one teammate), automatically avoiding pairing
+   someone with a name they already know from an earlier mission whenever
+   a valid rearrangement exists. Each player only sees their own pairing
+   (who they learned from, and who learned from them) — never the whole
+   mission's mapping.
 3. **Voting** — every alive player secretly votes to arrest a player or
    skip. A strict majority for one player arrests them (they sit out the
    next Mission Phase and next Information Phase, and must reveal their
@@ -102,6 +110,12 @@ Each round has four phases, in order:
   physical mission card says, the app just lets the leader pick names.
 - **Death reveal**: revealing a death does not reveal the dead player's
   secret role, only that they died.
+- **Name-sharing pairing**: the app randomizes single-cycle arrangements
+  (everyone on the mission forms one loop of "who learns from whom") and
+  keeps the best one found in ~300 tries, preferring zero repeats of
+  already-known names. On a 2-person mission there's only one possible
+  pairing, so a repeat there is unavoidable if they already know each
+  other's name from before.
 
 ## Firebase setup
 

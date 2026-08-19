@@ -18,6 +18,39 @@ function shuffle(arr) {
   return a;
 }
 function el(id) { return document.getElementById(id); }
+
+// Assigns each team member to learn one other member's name (a derangement:
+// nobody learns their own name, everybody learns from exactly one person and
+// is learned-from by exactly one person). Prefers pairings where the learner
+// doesn't already know the source's relevant name part, retrying random
+// arrangements and keeping the one with the fewest such repeats.
+function computeShareAssignment(teamIds, knownNames, shareType) {
+  function alreadyKnows(learner, source) {
+    const k = (knownNames[learner] && knownNames[learner][source]) || {};
+    if (shareType === 'first') return !!k.first;
+    if (shareType === 'last') return !!k.last;
+    return !!(k.first && k.last);
+  }
+  let best = null, bestViolations = Infinity;
+  const attempts = teamIds.length <= 2 ? 1 : 300;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const order = shuffle(teamIds);
+    let violations = 0;
+    const assignment = {};
+    for (let i = 0; i < order.length; i++) {
+      const learner = order[i];
+      const source = order[(i + 1) % order.length];
+      assignment[learner] = source;
+      if (alreadyKnows(learner, source)) violations++;
+    }
+    if (violations < bestViolations) {
+      best = assignment;
+      bestViolations = violations;
+      if (violations === 0) break;
+    }
+  }
+  return best;
+}
 function obj(x) { return x || {}; }
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -589,10 +622,40 @@ function renderMissionPhase(room) {
     const teamIds = Object.keys(obj(m.teamIds));
     const onMission = teamIds.includes(myPlayerId);
     html += `<p><strong>Mission ${m.result === 'success' ? 'succeeded! L +1' : 'failed! Kira +1'}</strong></p>`;
-    html += onMission
-      ? `<p class="hint">You were on this mission — share one of your secret names (first or last) with another player who was also on it.</p>`
-      : `<p class="hint">Players on the mission are sharing a secret name with each other.</p>`;
-    html += `<button id="btn-mission-done" class="primary">Continue</button>`;
+
+    const shareTypeLabel = { first: 'first name', last: 'last name', both: 'name' }[m.shareType] || 'name';
+
+    if (teamIds.length < 2) {
+      html += `<p class="hint">Only one player was on this mission — no names to share.</p>
+        <button id="btn-mission-done" class="primary">Continue</button>`;
+    } else if (!m.shareType) {
+      if (isLeader) {
+        html += `<p class="hint">Choose what to share with the team:</p>
+          <button class="secondary" id="btn-share-first">Share First Names</button>
+          <button class="secondary" id="btn-share-last">Share Last Names</button>
+          <button class="secondary" id="btn-share-both">Share Both Names</button>`;
+      } else {
+        html += `<p class="waiting">Waiting for the Leading Investigator to choose what to share...</p>`;
+      }
+    } else if (onMission) {
+      const assignment = obj(m.shareAssignment);
+      const sourceId = assignment[myPlayerId];
+      const source = players[sourceId];
+      const secretSource = secrets[sourceId] || {};
+      const sharedValue = m.shareType === 'first' ? secretSource.firstName
+        : m.shareType === 'last' ? secretSource.lastName
+        : `${secretSource.firstName} ${secretSource.lastName}`;
+      const learnerOfMineId = Object.keys(assignment).find(l => assignment[l] === myPlayerId);
+      const learnerOfMine = players[learnerOfMineId];
+      html += `<p><strong>You learned ${source ? source.label : '?'}'s ${shareTypeLabel}: ${esc(sharedValue)}</strong></p>`;
+      if (learnerOfMine) {
+        html += `<p class="hint">${learnerOfMine.label} learned your ${shareTypeLabel}.</p>`;
+      }
+      html += `<button id="btn-mission-done" class="primary">Continue</button>`;
+    } else {
+      html += `<p class="hint">Players on the mission shared ${shareTypeLabel}s with each other.</p>
+        <button id="btn-mission-done" class="primary">Continue</button>`;
+    }
   }
   html += `</div>`;
   el('round-content').innerHTML = html;
@@ -608,7 +671,14 @@ function renderMissionPhase(room) {
     el('btn-mission-fail').addEventListener('click', () => submitMissionResult(myRoomCode, false));
   }
   if (m.step === 'share') {
-    el('btn-mission-done').addEventListener('click', () => continueFromMissionShare(myRoomCode));
+    if (!m.shareType && isLeader) {
+      const firstBtn = el('btn-share-first'), lastBtn = el('btn-share-last'), bothBtn = el('btn-share-both');
+      if (firstBtn) firstBtn.addEventListener('click', () => submitNameShare(myRoomCode, 'first'));
+      if (lastBtn) lastBtn.addEventListener('click', () => submitNameShare(myRoomCode, 'last'));
+      if (bothBtn) bothBtn.addEventListener('click', () => submitNameShare(myRoomCode, 'both'));
+    }
+    const doneBtn = el('btn-mission-done');
+    if (doneBtn) doneBtn.addEventListener('click', () => continueFromMissionShare(myRoomCode));
   }
 }
 
@@ -639,6 +709,30 @@ async function submitMissionResult(code, success) {
     return room;
   });
 }
+async function submitNameShare(code, shareType) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'mission' || room.mission.step !== 'share') return room;
+    if (room.mission.shareType) return room;
+    if (myPlayerId !== room.mission.leaderId) return room;
+    const teamIds = Object.keys(obj(room.mission.teamIds));
+    if (teamIds.length < 2) return room;
+
+    const knownNames = obj(room.knownNames);
+    const assignment = computeShareAssignment(teamIds, knownNames, shareType);
+    room.mission.shareType = shareType;
+    room.mission.shareAssignment = assignment;
+
+    room.knownNames = knownNames;
+    Object.entries(assignment).forEach(([learner, source]) => {
+      room.knownNames[learner] = obj(room.knownNames[learner]);
+      room.knownNames[learner][source] = obj(room.knownNames[learner][source]);
+      if (shareType === 'first' || shareType === 'both') room.knownNames[learner][source].first = true;
+      if (shareType === 'last' || shareType === 'both') room.knownNames[learner][source].last = true;
+    });
+    return room;
+  });
+}
+
 async function continueFromMissionShare(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || room.phase !== 'mission' || room.mission.step !== 'share') return room;
