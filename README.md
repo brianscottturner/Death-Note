@@ -47,6 +47,12 @@ Then open `http://localhost:8000`. For real play, though, just use the
 GitHub Pages URL so everyone can join from their own phone without needing
 to be on the same machine/network.
 
+`index.html` loads `app.js` and `style.css` with a `?v=N` cache-busting
+query string. GitHub Pages doesn't reliably bust browser caches on its
+own, so bump that version number on any deploy that changes `app.js` or
+`style.css` — otherwise some phones may keep running stale JS after a
+fix ships.
+
 ## Round structure
 
 Each round has four phases, in order:
