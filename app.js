@@ -115,16 +115,21 @@ function clearLandingError() {
 el('btn-create-game').addEventListener('click', async () => {
   clearLandingError();
   const name = el('landing-name').value.trim();
+  const customCode = el('landing-custom-code').value.trim();
   if (!name) return showLandingError('Enter your name first.');
   el('btn-create-game').disabled = true;
   try {
-    await createRoom(name);
+    await createRoom(name, customCode);
   } catch (e) {
     showLandingError('Could not create game: ' + e.message);
   } finally {
     el('btn-create-game').disabled = false;
   }
 });
+
+function sanitizeCustomCode(raw) {
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
 
 el('btn-join-game').addEventListener('click', async () => {
   clearLandingError();
@@ -142,20 +147,39 @@ el('btn-join-game').addEventListener('click', async () => {
   }
 });
 
-async function createRoom(name) {
+async function createRoom(name, customCode) {
   await authReadyPromise;
-  const code = generateRoomCode();
-  await set(ref(db, `rooms/${code}`), {
-    code, createdAt: Date.now(), hostUid: myUid, status: 'lobby',
+  const newRoomData = {
+    createdAt: Date.now(), hostUid: myUid, status: 'lobby',
     round: 0, phase: null,
     lScore: 0, kiraScore: 0,
     lastInfoPhaseSwapped: false,
     mission: { step: null },
     voting: { resolved: false },
-    info: { step: null, swappedThisPhase: false },
+    info: { lDone: false, kiraDone: false, swappedThisPhase: false },
     endgame: { active: false, resolved: false },
     players: { A: { uid: myUid, label: 'A', name } }
-  });
+  };
+
+  let code;
+  if (customCode) {
+    code = sanitizeCustomCode(customCode);
+    if (code.length < 3 || code.length > 12) {
+      throw new Error('Custom room code must be 3-12 letters/numbers.');
+    }
+    // Transaction guards against two hosts claiming the same custom code at once.
+    const result = await runTransaction(ref(db, `rooms/${code}`), (existing) => {
+      if (existing) return existing;
+      return { code, ...newRoomData };
+    });
+    const finalRoom = result.snapshot.val();
+    if (!finalRoom || finalRoom.hostUid !== myUid) {
+      throw new Error(`Room code "${code}" is already in use. Try a different one.`);
+    }
+  } else {
+    code = generateRoomCode();
+    await set(ref(db, `rooms/${code}`), { code, ...newRoomData });
+  }
   myRoomCode = code;
   saveSession(code);
   attachRoomListener(code);

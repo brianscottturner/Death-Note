@@ -10,9 +10,11 @@ HTML/CSS/JS, hosted on GitHub Pages.
 
 ## How it works
 
-One player creates a game and gets a 6-character room code; everyone else
-opens the app on their own phone and enters that code to join the same
-session. Anyone can tap **Leave Lobby** to back out before the game
+One player creates a game and gets a 6-character room code (or the host
+can type their own custom code, 3-12 letters/numbers, instead — handy for
+something memorable like a movie night theme; rejected if that code is
+already taken by another active game); everyone else opens the app on
+their own phone and enters that code to join the same session. Anyone can tap **Leave Lobby** to back out before the game
 starts — if the host leaves, host status automatically transfers to
 another remaining player, and if the last player leaves, the room is
 deleted. Once 7–10 players have joined, the host deals roles — each phone
