@@ -267,12 +267,38 @@ function renderLobby(room) {
   } else {
     html += `<p class="hint">Waiting for the host to start the game...</p>`;
   }
+  html += `<button id="btn-leave-lobby" class="secondary">Leave Lobby</button>`;
   html += `</div>`;
   el('lobby-content').innerHTML = html;
 
   if (canStart) {
     el('btn-start-game').addEventListener('click', () => startGame(myRoomCode));
   }
+  el('btn-leave-lobby').addEventListener('click', () => leaveLobby(myRoomCode));
+}
+
+async function leaveLobby(code) {
+  const leavingPlayerId = myPlayerId;
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.status !== 'lobby') return room;
+    const players = obj(room.players);
+    delete players[leavingPlayerId];
+    const remainingIds = Object.keys(players);
+    if (remainingIds.length === 0) return null;
+    room.players = players;
+    if (room.hostUid === myUid) {
+      const nextHostId = remainingIds.sort()[0];
+      room.hostUid = players[nextHostId].uid;
+    }
+    return room;
+  });
+  clearSession();
+  detachRoomListener();
+  currentRoomData = null;
+  myRoomCode = null;
+  myPlayerId = null;
+  notesPanelInitialized = false;
+  showScreen('screen-landing');
 }
 
 async function startGame(code) {

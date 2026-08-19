@@ -12,7 +12,10 @@ HTML/CSS/JS, hosted on GitHub Pages.
 
 One player creates a game and gets a 6-character room code; everyone else
 opens the app on their own phone and enters that code to join the same
-session. Once 7–10 players have joined, the host deals roles — each phone
+session. Anyone can tap **Leave Lobby** to back out before the game
+starts — if the host leaves, host status automatically transfers to
+another remaining player, and if the last player leaves, the room is
+deleted. Once 7–10 players have joined, the host deals roles — each phone
 then privately shows only that player's own secret role and name, with no
 passing required. From there the app drives the same four-phase round loop
 as before, but now every device shows the view appropriate to that specific
