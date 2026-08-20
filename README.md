@@ -158,9 +158,28 @@ Each expansion role has three settings, not just an on/off switch:
   the *current* Kira is. Mello gets **2 attempts total, for as long as
   the role is theirs** — fail both, and they're eliminated; get
   arrested, and they're eliminated too (a neutral has no round to "sit
-  out"). Combines freely with Watari or X-Kira. This expansion will
-  eventually add one more role; only X-Kira and Mello are implemented so
-  far.
+  out"). Combines freely with Watari or X-Kira.
+- **Special Provisions for Kira — N**: replaces L, with the same win
+  conditions but a different investigative tool. Instead of 4 suspects
+  shown every round, N privately accuses one player per Information
+  Phase: an innocent is **cleared for good** (permanent, cumulative,
+  shown as a running list on N's own phone); Kira or the Follower gives
+  **no confirmation either way** — silence is itself a clue, since it
+  narrows things to "one of these two"; and Mello (if he's in the game)
+  is **identified by name** to N outright. N gets a limited number of
+  **Definitive Clears** for the whole game — **2 with 7-8 players, 3
+  with 9-10** — but accusing Kira, the Follower, or Mello never spends
+  one, since none of those produce an ordinary "clear." Once the budget
+  of ordinary clears is spent, further accusations of innocents just
+  return no new information, so N can always keep investigating without
+  risk, they just stop learning anything new about regular players.
+  Structurally N *is* L (same seat, same Watari bond, same
+  recruit-immunity for X-Kira, same "sit out a round" arrest, same
+  endgame guess) — only the Information Phase and some display text
+  change. Combines freely with the rest of this expansion.
+
+This expansion will eventually add one more role; X-Kira, Mello, and N
+are implemented so far.
 
 ## Notes
 
@@ -169,8 +188,9 @@ Each expansion role has three settings, not just an on/off switch:
   if the Task Force expansion is enabled, and 1 Mello if enabled. If
   X-Kira is enabled instead of normal Kira, there's no Follower
   until/unless one gets recruited mid-game, so the initial split is 1 L,
-  1 X-Kira, and everyone else an
-  Investigator (plus Watari, if that's also enabled).
+  1 X-Kira, and everyone else an Investigator (plus Watari/Mello, if
+  those are also enabled). If N is enabled, N simply takes the L slot —
+  everything else about the split is unchanged.
 - **Voting**: majority is a strict majority of alive players who voted
   (more than half). Ties or no majority = nothing happens.
 - **Mission team size**: not validated by the app — it's whatever your
