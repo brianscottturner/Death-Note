@@ -116,9 +116,11 @@ tapped.
   L already knows Watari isn't Kira, Watari is never one of the 4
   suspects L is shown each Information Phase. If Kira successfully kills
   Watari, L's team immediately loses 3 points (never dropping below 0),
-  and every plain Investigator (not L, Kira, the Follower, or Watari)
-  sees a special notice in the next Deaths Phase: "Watari has died... All
-  data deletion." The Task Force expansion will eventually add two more
+  and everyone — including L, Kira, and the Follower — sees a special
+  notice in the next Deaths Phase: "Watari has died... All data
+  deletion." (It's shown to everyone rather than just the Investigators
+  so that L/Kira/Follower not reacting to it doesn't itself look
+  suspicious.) The Task Force expansion will eventually add two more
   roles; only Watari is implemented so far.
 
 ## Notes
