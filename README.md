@@ -129,8 +129,19 @@ Each expansion role has three settings, not just an on/off switch:
   notice in the next Deaths Phase: "Watari has died... All data
   deletion." (It's shown to everyone rather than just the Investigators
   so that L/Kira/Follower not reacting to it doesn't itself look
-  suspicious.) The Task Force expansion will eventually add two more
-  roles; only Watari is implemented so far.
+  suspicious.) The Task Force expansion will eventually add one more
+  role; Watari and NPA Chief are implemented so far.
+- **Task Force — NPA Chief**: a normal Investigator on L/N's team, bound
+  to their post — they can **never vote to skip**, always naming someone.
+  If a vote ever fails to reach a majority, the Chief may force an
+  arrest anyway, choosing only from whoever actually led that vote (the
+  tied-for-most non-skip candidates) — or let it go, if they don't like
+  the odds. This only ever fires when the town's own vote produced
+  nothing (no majority); it never overrides an actual majority decision,
+  so a decisive town keeps full control and the Chief only steps in to
+  turn a wasted round into action. A forced arrest carries every normal
+  consequence — sit-out, the Kira endgame trigger, Mello's elimination —
+  identically to a majority arrest.
 - **Special Provisions for Kira — X-Kira**: replaces the normal Kira
   role. Plays exactly like Kira (same kill guesses, same win conditions)
   but starts with **no Follower** — X-Kira is alone. Once L's team
@@ -185,7 +196,8 @@ are implemented so far.
 
 - **Players**: 7–10. Always exactly 1 L, 1 Kira, 1 Kira Follower, with the
   rest as Investigators (e.g. a 7-player game is 1/1/1/4). Add 1 Watari
-  if the Task Force expansion is enabled, and 1 Mello if enabled. If
+  and/or 1 NPA Chief if the Task Force expansion is enabled, and 1 Mello
+  if enabled. If
   X-Kira is enabled instead of normal Kira, there's no Follower
   until/unless one gets recruited mid-game, so the initial split is 1 L,
   1 X-Kira, and everyone else an Investigator (plus Watari/Mello, if

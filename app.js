@@ -187,7 +187,7 @@ async function createRoom(name, customCode) {
     round: 0, phase: null,
     lScore: 0, kiraScore: 0,
     lastInfoPhaseSwapped: false,
-    settings: { watari: 'off', xKira: 'off', mello: 'off', n: 'off' },
+    settings: { watari: 'off', xKira: 'off', mello: 'off', n: 'off', npa: 'off' },
     mission: { step: null },
     voting: { resolved: false },
     info: { lDone: false, kiraDone: false, swappedThisPhase: false },
@@ -314,7 +314,8 @@ function renderLobby(room) {
   const xKiraSetting = (room.settings && room.settings.xKira) || 'off';
   const melloSetting = (room.settings && room.settings.mello) || 'off';
   const nSetting = (room.settings && room.settings.n) || 'off';
-  const configuredCount = (watariSetting !== 'off' ? 1 : 0) + (xKiraSetting !== 'off' ? 1 : 0) + (melloSetting !== 'off' ? 1 : 0) + (nSetting !== 'off' ? 1 : 0);
+  const npaSetting = (room.settings && room.settings.npa) || 'off';
+  const configuredCount = (watariSetting !== 'off' ? 1 : 0) + (xKiraSetting !== 'off' ? 1 : 0) + (melloSetting !== 'off' ? 1 : 0) + (nSetting !== 'off' ? 1 : 0) + (npaSetting !== 'off' ? 1 : 0);
 
   let html = `<h1 class="title">DEATH NOTE<br><span class="subtitle">Kira's Game</span></h1>
     <div class="card">
@@ -343,13 +344,14 @@ function renderLobby(room) {
       <p class="hint">On = guaranteed in the game. Off = guaranteed out. Random = 50/50, decided when roles are dealt — and never announced either way.</p>
       <p class="hint" style="margin-top:10px;">Task Force expansion</p>`;
     html += roleSettingRow('watari', watariSetting, 'Watari', "A normal Investigator who knows L's identity from the start (and L knows Watari too). Watari is never one of L's 4 suspects.");
+    html += roleSettingRow('npa', npaSetting, 'NPA Chief', "On L/N's team. Can never vote to skip — always names someone. If a vote fails to reach majority, the Chief may force an arrest anyway, choosing from whoever led the vote (or let it go).");
     html += `<p class="hint" style="margin-top:10px;">Special Provisions for Kira</p>`;
     html += roleSettingRow('xKira', xKiraSetting, 'X-Kira', 'Replaces Kira. Starts with no Follower — once L\'s team reaches 3 points, X-Kira gets one chance to recruit one during a Voting Phase.');
     html += roleSettingRow('mello', melloSetting, 'Mello', "A neutral third team of one. Can attempt to steal the Death Note from Kira during the Information Phase — succeed, and Mello becomes the new Kira while the old Kira becomes the new Mello. Two failed attempts (by whoever currently holds the role), or an arrest, means elimination.");
     html += roleSettingRow('n', nSetting, 'N', "Replaces L. Instead of 4 suspects, N accuses one player per Information Phase — an innocent gets cleared for good, Mello gets identified, but Kira or the Follower gives nothing away. Limited Definitive Clears for the whole game (2 with 7-8 players, 3 with 9-10).");
     html += `</div>`;
-  } else if (watariSetting === 'on' || xKiraSetting === 'on' || melloSetting === 'on' || nSetting === 'on') {
-    const active = [watariSetting === 'on' && 'Watari (Task Force)', xKiraSetting === 'on' && 'X-Kira (Special Provisions for Kira)', melloSetting === 'on' && 'Mello (Special Provisions for Kira)', nSetting === 'on' && 'N (Special Provisions for Kira)'].filter(Boolean);
+  } else if (watariSetting === 'on' || xKiraSetting === 'on' || melloSetting === 'on' || nSetting === 'on' || npaSetting === 'on') {
+    const active = [watariSetting === 'on' && 'Watari (Task Force)', npaSetting === 'on' && 'NPA Chief (Task Force)', xKiraSetting === 'on' && 'X-Kira (Special Provisions for Kira)', melloSetting === 'on' && 'Mello (Special Provisions for Kira)', nSetting === 'on' && 'N (Special Provisions for Kira)'].filter(Boolean);
     html += `<p class="hint">Expansion${active.length > 1 ? 's' : ''} active: ${active.join(', ')}</p>`;
   }
 
@@ -424,10 +426,12 @@ async function startGame(code) {
     const xKiraEnabled = resolveRoleSetting(room.settings && room.settings.xKira);
     const melloEnabled = resolveRoleSetting(room.settings && room.settings.mello);
     const nEnabled = resolveRoleSetting(room.settings && room.settings.n);
+    const npaEnabled = resolveRoleSetting(room.settings && room.settings.npa);
     const fixedRoles = ['L', 'Kira']
       .concat(xKiraEnabled ? [] : ['KiraFollower'])
       .concat(watariEnabled ? ['Watari'] : [])
-      .concat(melloEnabled ? ['Mello'] : []);
+      .concat(melloEnabled ? ['Mello'] : [])
+      .concat(npaEnabled ? ['NPAChief'] : []);
     const roles = shuffle(fixedRoles.concat(Array(count - fixedRoles.length).fill('Investigator')));
     const firstNames = shuffle(FIRST_NAMES).slice(0, count);
     const lastNames = shuffle(LAST_NAMES).slice(0, count);
@@ -455,6 +459,7 @@ async function startGame(code) {
     if (!xKiraEnabled) room.followerPlayerId = playerIds.find(id => secrets[id].role === 'KiraFollower');
     if (watariEnabled) room.watariPlayerId = playerIds.find(id => secrets[id].role === 'Watari');
     if (melloEnabled) room.melloPlayerId = playerIds.find(id => secrets[id].role === 'Mello');
+    if (npaEnabled) room.npaPlayerId = playerIds.find(id => secrets[id].role === 'NPAChief');
     room.status = 'reveal';
     return room;
   });
@@ -489,6 +494,9 @@ function renderReveal(room) {
   } else if (mySecret.role === 'Mello') {
     roleName = 'You are MELLO';
     roleDesc = "A team of one — not with L, not with Kira. Your goal: steal the Death Note and become the new Kira yourself. During the Information Phase you can guess who's holding it. You get 2 attempts total, for as long as you hold this role — fail both, or get arrested, and you're eliminated.";
+  } else if (mySecret.role === 'NPAChief') {
+    roleName = 'You are NPA CHIEF';
+    roleDesc = `A normal Investigator on ${room.nActive ? "N" : 'L'}'s side, bound to your post: you can never vote to skip — always name someone. If a vote ever fails to reach a majority, you alone may force an arrest anyway, choosing from whoever led the vote — or let it go, if you don't like the odds.`;
   } else {
     roleName = 'You are an INVESTIGATOR';
     roleDesc = "You're on L's side. Vote wisely and help complete missions to expose Kira.";
@@ -862,11 +870,13 @@ function renderVotingPhase(room) {
     } else if (votes[myPlayerId] !== undefined) {
       html += `<p class="waiting">Vote cast. Waiting for others... (${Object.keys(votes).length}/${aliveIds.length} voted)</p>`;
     } else {
-      html += `<p class="hint">Vote to arrest a player, or skip.</p><div id="vote-choices">`;
+      const amNpaChief = myPlayerId === room.npaPlayerId;
+      html += `<p class="hint">${amNpaChief ? "As NPA Chief, you're bound to your post — you must name someone, no skipping." : 'Vote to arrest a player, or skip.'}</p><div id="vote-choices">`;
       aliveIds.filter(id => id !== myPlayerId).forEach(id => {
         html += `<button class="choice" data-target="${id}">${players[id].label} — ${esc(players[id].name)}</button>`;
       });
-      html += `<button class="choice" data-target="skip">Skip</button></div>`;
+      if (!amNpaChief) html += `<button class="choice" data-target="skip">Skip</button>`;
+      html += `</div>`;
     }
   } else {
     const tally = {};
@@ -876,7 +886,22 @@ function renderVotingPhase(room) {
       const label = k === 'skip' ? 'Skip' : (players[k] ? `${players[k].label} — ${esc(players[k].name)}` : k);
       html += `<div class="player-row"><span>${label}</span><span>${c} vote(s)</span></div>`;
     });
-    if (!voting.arrestedId) {
+
+    const tieBreakPending = !!(voting.tieBreakPending && !voting.tieBreakDone);
+    const amNpaChief = myPlayerId === room.npaPlayerId;
+
+    if (tieBreakPending) {
+      if (amNpaChief) {
+        html += `<p class="hint">No majority — as NPA Chief, you may force an arrest anyway, choosing from whoever led the vote. Or let it go.</p>
+          <div id="tiebreak-choices">`;
+        Object.keys(obj(voting.tieBreakCandidates)).forEach(id => {
+          html += `<button class="choice" data-target="${id}">${players[id].label} — ${esc(players[id].name)}</button>`;
+        });
+        html += `<button class="choice" data-target="none">Let It Go — No Arrest</button></div>`;
+      } else {
+        html += `<p class="waiting">No majority — waiting for the NPA Chief's decision...</p>`;
+      }
+    } else if (!voting.arrestedId) {
       html += `<p><strong>No majority reached — no one is arrested.</strong></p>`;
     } else {
       const arrested = players[voting.arrestedId];
@@ -887,7 +912,9 @@ function renderVotingPhase(room) {
         ? `<p class="hint">${arrested.label} is eliminated from the game entirely.</p>`
         : `<p class="hint">${arrested.label} will sit out the next mission and next Information Phase.</p>`;
     }
-    html += `<button id="btn-voting-continue" class="primary">Continue</button>`;
+    if (!tieBreakPending) {
+      html += `<button id="btn-voting-continue" class="primary">Continue</button>`;
+    }
   }
   html += `</div>`;
 
@@ -937,7 +964,11 @@ function renderVotingPhase(room) {
       btn.addEventListener('click', () => castVote(myRoomCode, btn.dataset.target));
     });
   } else {
-    el('btn-voting-continue').addEventListener('click', () => continueFromVotingResult(myRoomCode));
+    const continueBtn = el('btn-voting-continue');
+    if (continueBtn) continueBtn.addEventListener('click', () => continueFromVotingResult(myRoomCode));
+    document.querySelectorAll('#tiebreak-choices .choice').forEach(btn => {
+      btn.addEventListener('click', () => submitTieBreak(myRoomCode, btn.dataset.target === 'none' ? null : btn.dataset.target));
+    });
   }
 
   if (recruitEligible) {
@@ -1015,10 +1046,29 @@ async function castVote(code, targetOrSkip) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || room.phase !== 'voting' || room.voting.resolved) return room;
     if (!room.secrets[myPlayerId] || !room.secrets[myPlayerId].alive) return room;
+    // NPA Chief is bound to their post — always names someone, never skips.
+    if (targetOrSkip === 'skip' && myPlayerId === room.npaPlayerId) return room;
     room.voting.votes = obj(room.voting.votes);
     room.voting.votes[myPlayerId] = targetOrSkip;
     return room;
   });
+}
+
+// Shared by a normal majority arrest and an NPA Chief tie-break arrest, so
+// both paths end up with identical consequences (sit-out, Kira endgame
+// trigger, Mello elimination).
+function applyArrestConsequences(room, secrets, arrestedId) {
+  secrets[arrestedId].skipNextMission = true;
+  secrets[arrestedId].skipNextInfo = true;
+  if (secrets[arrestedId].role === 'Kira') {
+    room.endgame = { active: true, resolved: false };
+  } else if (secrets[arrestedId].role === 'Mello') {
+    // Neutral role — arrest eliminates Mello outright, same as failing
+    // both steal attempts, rather than just sitting out a round.
+    secrets[arrestedId].alive = false;
+    room.pendingDeaths = obj(room.pendingDeaths);
+    room.pendingDeaths[arrestedId] = true;
+  }
 }
 
 async function maybeResolveVoting(room, code) {
@@ -1044,25 +1094,49 @@ async function maybeResolveVoting(room, code) {
     r.voting.resolved = true;
     r.voting.arrestedId = arrested;
     if (arrested) {
-      s[arrested].skipNextMission = true;
-      s[arrested].skipNextInfo = true;
-      if (s[arrested].role === 'Kira') {
-        r.endgame = { active: true, resolved: false };
-      } else if (s[arrested].role === 'Mello') {
-        // Neutral role — arrest eliminates Mello outright, same as failing
-        // both steal attempts, rather than just sitting out a round.
-        s[arrested].alive = false;
-        r.pendingDeaths = obj(r.pendingDeaths);
-        r.pendingDeaths[arrested] = true;
+      applyArrestConsequences(r, s, arrested);
+    } else {
+      // No majority — NPA Chief (if alive and in this game) gets a chance to
+      // break the deadlock, choosing only from whoever actually led the vote.
+      const npaId = r.npaPlayerId;
+      if (npaId && s[npaId] && s[npaId].alive) {
+        const nonSkipCounts = Object.entries(tally).filter(([k]) => k !== 'skip').map(([, c]) => c);
+        const maxCount = Math.max(0, ...nonSkipCounts);
+        if (maxCount > 0) {
+          r.voting.tieBreakPending = true;
+          // Object map, not an array — Firebase Realtime Database doesn't
+          // preserve arrays as arrays (they come back as {0: ..., 1: ...}
+          // objects), which is why every other list in this app is a map too.
+          r.voting.tieBreakCandidates = {};
+          Object.entries(tally)
+            .filter(([k, c]) => k !== 'skip' && c === maxCount)
+            .forEach(([k]) => { r.voting.tieBreakCandidates[k] = true; });
+        }
       }
     }
     return r;
   });
 }
 
+async function submitTieBreak(code, chosenId) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'voting' || !room.voting.resolved) return room;
+    if (!room.voting.tieBreakPending || room.voting.tieBreakDone) return room;
+    if (myPlayerId !== room.npaPlayerId) return room;
+    room.voting.tieBreakDone = true;
+    if (chosenId && obj(room.voting.tieBreakCandidates)[chosenId]) {
+      const secrets = obj(room.secrets);
+      room.voting.arrestedId = chosenId;
+      applyArrestConsequences(room, secrets, chosenId);
+    }
+    return room;
+  });
+}
+
 async function continueFromVotingResult(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || room.phase !== 'voting' || !room.voting.resolved) return room;
+    if (room.voting.tieBreakPending && !room.voting.tieBreakDone) return room;
     if (room.endgame && room.endgame.active) return room;
     // If X-Kira's one-time recruitment offer was available this round but never
     // used, the window closes here rather than reappearing next round.
@@ -1583,6 +1657,7 @@ function renderGameOver(room) {
     let roleLabel = s.role || '';
     if (roleLabel === 'Kira' && room.xKiraActive) roleLabel = 'X-Kira';
     else if (roleLabel === 'L' && room.nActive) roleLabel = 'N';
+    else if (roleLabel === 'NPAChief') roleLabel = 'NPA Chief';
     html += `<div class="player-row"><span>${players[id].label} — ${esc(players[id].name)}${status}</span><span>${roleLabel} · ${s.firstName || ''} ${s.lastName || ''}</span></div>`;
   });
   html += `<button id="btn-new-game" class="primary">New Game</button></div>`;
