@@ -114,8 +114,10 @@ tapped.
   (votes, joins missions, has a secret name to protect) with one twist —
   Watari knows L's identity from the start, and L knows Watari's. Because
   L already knows Watari isn't Kira, Watari is never one of the 4
-  suspects L is shown each Information Phase. The Task Force expansion
-  will eventually add two more roles; only Watari is implemented so far.
+  suspects L is shown each Information Phase. If Kira successfully kills
+  Watari, L's team immediately loses 3 points (never dropping below 0).
+  The Task Force expansion will eventually add two more roles; only
+  Watari is implemented so far.
 
 ## Notes
 

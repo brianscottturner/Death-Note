@@ -1180,6 +1180,9 @@ async function submitKillGuess(code, targetId, first, last) {
       room.pendingDeaths[targetId] = true;
       room.kiraScore = (room.kiraScore || 0) + 2;
       room.info.killsThisPhase = (room.info.killsThisPhase || 0) + 1;
+      if (targetId === room.watariPlayerId) {
+        room.lScore = Math.max(0, (room.lScore || 0) - 3);
+      }
       applyWinCheck(room);
     } else {
       target.wrongGuessCount = (target.wrongGuessCount || 0) + 1;
