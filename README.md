@@ -125,18 +125,20 @@ tapped.
 - **Special Provisions for Kira — X-Kira**: replaces the normal Kira
   role. Plays exactly like Kira (same kill guesses, same win conditions)
   but starts with **no Follower** — X-Kira is alone. Once L's team
-  reaches 3 points, a **Recruit a Follower** panel appears on X-Kira's
-  phone during every Voting Phase (until successful): X-Kira picks 2
-  players, and the app randomly recruits one of them. L and Watari can't
-  be recruited — if exactly one of the two picks is L or Watari, the app
-  recruits the other pick instead of rolling randomly; if X-Kira happens
-  to pick *both* L and Watari, the app recruits a random third player
-  instead, and as a consolation X-Kira learns L and Watari's real
-  identities. Once someone is recruited, they become a normal Kira
-  Follower for the rest of the game (chat, Death Note swap, everything)
-  and the recruitment panel stops appearing. Only one of this
-  expansion's Kira-replacing roles can be active per game; only X-Kira
-  is implemented so far.
+  reaches 3 points, a **Recruit a Follower** panel appears once on
+  X-Kira's phone during that round's Voting Phase: X-Kira picks 2
+  players, and the app randomly recruits one of them. This is a
+  **one-time power** — whether or not X-Kira uses it that round, the
+  panel never reappears afterward. L and Watari can't be recruited — if
+  exactly one of the two picks is L or Watari, the app recruits the
+  other pick instead of rolling randomly; if X-Kira happens to pick
+  *both* L and Watari, the app recruits a random third player instead
+  and tells X-Kira only that "the two people you chose to recruit were
+  L and Watari" (naming the two picks, but not which one is which — no
+  identities are revealed). Once someone is recruited, they become a
+  normal Kira Follower for the rest of the game (chat, Death Note swap,
+  everything). Only one of this expansion's Kira-replacing roles can be
+  active per game; only X-Kira is implemented so far.
 
 ## Notes
 

@@ -872,15 +872,18 @@ function renderVotingPhase(room) {
 
   // X-Kira's private recruitment attempt — additive to normal voting, visible
   // only to X-Kira (while picking/pending) and to whoever just got recruited.
+  // This is a one-time power: room.xKiraRecruitOffered is set permanently
+  // (never resets between rounds, unlike room.voting) the moment the panel
+  // has been offered once, whether or not X-Kira actually used it.
   const xKiraActive = !!(room.settings && room.settings.xKira);
   const amXKira = xKiraActive && myPlayerId === room.kiraPlayerId;
-  const recruitEligible = amXKira && !room.followerPlayerId && (room.lScore || 0) >= 3 && !voting.recruitDone;
+  const recruitEligible = amXKira && !room.followerPlayerId && (room.lScore || 0) >= 3 && !room.xKiraRecruitOffered;
   const picks = Object.keys(obj(voting.recruitPicks));
 
   if (recruitEligible) {
     html += `<div class="card">
       <h3>Recruit a Follower</h3>
-      <p class="hint">L's team has reached 3 points. Choose 2 players to attempt to recruit — the app will pick one of them at random. (${picks.length}/2 selected)</p>
+      <p class="hint">L's team has reached 3 points. Choose 2 players to attempt to recruit — the app will pick one of them at random. This is a one-time offer. (${picks.length}/2 selected)</p>
       <div id="recruit-list">`;
     aliveIds.filter(id => id !== myPlayerId).forEach(id => {
       const selected = picks.includes(id);
@@ -888,16 +891,19 @@ function renderVotingPhase(room) {
     });
     html += `</div><button id="btn-recruit-confirm" class="danger" ${picks.length === 2 ? '' : 'disabled'}>Confirm Recruitment Targets</button>
     </div>`;
+  } else if (amXKira && voting.recruitDone && voting.recruitBothProtected) {
+    const [pickA, pickB] = Object.keys(obj(voting.recruitPicks));
+    const pA = players[pickA], pB = players[pickB];
+    const base = `The two people you chose to recruit — ${pA.label} — ${esc(pA.name)} and ${pB.label} — ${esc(pB.name)} — were L and Watari.`;
+    if (voting.recruitedId) {
+      const recruited = players[voting.recruitedId];
+      html += `<div class="card"><p><strong>${recruited.label} — ${esc(recruited.name)} has joined you as your Follower.</strong></p><p class="hint">${base} A third person was recruited instead.</p></div>`;
+    } else {
+      html += `<div class="card"><p class="hint">${base} No one else was available to recruit instead.</p></div>`;
+    }
   } else if (amXKira && voting.recruitDone && voting.recruitedId) {
     const recruited = players[voting.recruitedId];
-    html += `<div class="card"><p><strong>${recruited.label} — ${esc(recruited.name)} has joined you as your Follower.</strong></p>`;
-    if (voting.recruitRevealLId && voting.recruitRevealWatariId) {
-      const lp = players[voting.recruitRevealLId], wp = players[voting.recruitRevealWatariId];
-      html += `<p class="hint">Both of your original picks turned out to be protected — which tells you exactly who they are: L is ${lp.label} — ${esc(lp.name)}, and Watari is ${wp.label} — ${esc(wp.name)}. A random Investigator was recruited instead.</p>`;
-    }
-    html += `</div>`;
-  } else if (amXKira && voting.recruitDone && !voting.recruitedId) {
-    html += `<div class="card"><p>Both of your picks were protected, and no one else was available to recruit instead.</p></div>`;
+    html += `<div class="card"><p><strong>${recruited.label} — ${esc(recruited.name)} has joined you as your Follower.</strong></p></div>`;
   } else if (xKiraActive && voting.recruitDone && voting.recruitedId === myPlayerId) {
     const kira = players[room.kiraPlayerId];
     html += `<div class="card"><p><strong>You have been recruited into a Kira Follower.</strong></p><p>X-Kira is <strong>${kira.label} — ${esc(kira.name)}</strong>.</p></div>`;
@@ -926,7 +932,7 @@ function renderVotingPhase(room) {
 
 async function toggleRecruitPick(code, playerId) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
-    if (!room || room.phase !== 'voting' || room.voting.recruitDone) return room;
+    if (!room || room.phase !== 'voting' || room.xKiraRecruitOffered) return room;
     if (myPlayerId !== room.kiraPlayerId || playerId === room.kiraPlayerId) return room;
     if (!(room.settings && room.settings.xKira) || room.followerPlayerId) return room;
     room.voting.recruitPicks = obj(room.voting.recruitPicks);
@@ -942,7 +948,7 @@ async function toggleRecruitPick(code, playerId) {
 
 async function confirmRecruit(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
-    if (!room || room.phase !== 'voting' || room.voting.recruitDone) return room;
+    if (!room || room.phase !== 'voting' || room.xKiraRecruitOffered) return room;
     if (myPlayerId !== room.kiraPlayerId) return room;
     if (!(room.settings && room.settings.xKira) || room.followerPlayerId) return room;
     if ((room.lScore || 0) < 3) return room;
@@ -955,11 +961,11 @@ async function confirmRecruit(code) {
     const isProtected = (id) => id === room.lPlayerId || id === room.watariPlayerId;
     const aProtected = isProtected(a), bProtected = isProtected(b);
     let recruitedId = null;
-    let revealBoth = false;
+    let bothProtected = false;
     if (aProtected && bProtected) {
       const pool = Object.keys(secrets).filter(id => secrets[id].alive && id !== room.kiraPlayerId && id !== a && id !== b);
       recruitedId = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
-      revealBoth = true;
+      bothProtected = true;
     } else if (aProtected) {
       recruitedId = b;
     } else if (bProtected) {
@@ -968,15 +974,17 @@ async function confirmRecruit(code) {
       recruitedId = Math.random() < 0.5 ? a : b;
     }
 
+    // This is a one-time power — mark it spent permanently (not scoped to
+    // room.voting, which resets every round) regardless of the outcome.
+    room.xKiraRecruitOffered = true;
     room.voting.recruitDone = true;
     if (recruitedId) {
       room.secrets[recruitedId].role = 'KiraFollower';
       room.followerPlayerId = recruitedId;
       room.voting.recruitedId = recruitedId;
     }
-    if (revealBoth) {
-      room.voting.recruitRevealLId = room.lPlayerId;
-      room.voting.recruitRevealWatariId = room.watariPlayerId;
+    if (bothProtected) {
+      room.voting.recruitBothProtected = true;
     }
     return room;
   });
@@ -1029,6 +1037,11 @@ async function continueFromVotingResult(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || room.phase !== 'voting' || !room.voting.resolved) return room;
     if (room.endgame && room.endgame.active) return room;
+    // If X-Kira's one-time recruitment offer was available this round but never
+    // used, the window closes here rather than reappearing next round.
+    if (room.settings && room.settings.xKira && !room.followerPlayerId && !room.xKiraRecruitOffered && (room.lScore || 0) >= 3) {
+      room.xKiraRecruitOffered = true;
+    }
     room.phase = 'information';
     const l = room.secrets[room.lPlayerId];
     const lNeedsToAct = !!(l && l.alive && !l.skipNextInfo);
