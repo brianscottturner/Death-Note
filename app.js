@@ -609,10 +609,15 @@ function applyWinCheck(room) {
 
 function renderDeathsPhase(room) {
   const players = obj(room.players);
+  const secrets = obj(room.secrets);
   const deaths = Object.keys(obj(room.pendingDeaths));
+  const mySecret = secrets[myPlayerId];
   let html = `<h2>Deaths Phase</h2><div class="card">`;
   if (deaths.length === 0) html += `<p>No one has died... yet.</p>`;
   else deaths.forEach(id => { html += `<p>Investigator ${players[id].label} has died.</p>`; });
+  if (deaths.includes(room.watariPlayerId) && mySecret && mySecret.role === 'Investigator') {
+    html += `<p class="watari-alert">Watari has died... All data deletion.</p>`;
+  }
   html += `<button id="btn-deaths-continue" class="primary">Continue</button></div>`;
   el('round-content').innerHTML = html;
   el('btn-deaths-continue').addEventListener('click', () => continueFromDeaths(myRoomCode));

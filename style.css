@@ -190,6 +190,18 @@ button.choice:disabled {
 
 .hidden { display: none !important; }
 
+.watari-alert {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--red);
+  border-radius: 6px;
+  background: #1a0d0d;
+  color: var(--red-bright);
+  font-style: italic;
+  text-align: center;
+  letter-spacing: 0.3px;
+}
+
 .player-row {
   display: flex;
   justify-content: space-between;
