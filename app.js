@@ -187,6 +187,7 @@ async function createRoom(name, customCode) {
     round: 0, phase: null,
     lScore: 0, kiraScore: 0,
     lastInfoPhaseSwapped: false,
+    settings: { watari: false },
     mission: { step: null },
     voting: { resolved: false },
     info: { lDone: false, kiraDone: false, swappedThisPhase: false },
@@ -250,6 +251,7 @@ async function joinRoom(code, name) {
 function attachRoomListener(code) {
   detachRoomListener();
   notesPanelInitialized = false;
+  expansionPanelOpen = false;
   const roomRef = ref(db, `rooms/${code}`);
   roomUnsub = onValue(roomRef, (snap) => {
     if (!snap.exists()) {
@@ -300,12 +302,15 @@ function resolveMyPlayerId(room) {
 
 /* ---------------- LOBBY ---------------- */
 
+let expansionPanelOpen = false;
+
 function renderLobby(room) {
   const players = obj(room.players);
   const ids = Object.keys(players).sort();
   const isHost = myUid === room.hostUid;
   const count = ids.length;
   const canStart = isHost && count >= 7 && count <= 10;
+  const watariEnabled = !!(room.settings && room.settings.watari);
 
   let html = `<h1 class="title">DEATH NOTE<br><span class="subtitle">Kira's Game</span></h1>
     <div class="card">
@@ -317,6 +322,20 @@ function renderLobby(room) {
     html += `<div class="player-row"><span>${players[id].label} — ${esc(players[id].name)}${players[id].uid === myUid ? ' (you)' : ''}</span></div>`;
   });
   html += `</div>`;
+
+  if (isHost) {
+    html += `<button id="btn-toggle-expansions" class="secondary" type="button">🎭 Expansions &amp; Roles${watariEnabled ? ' — 1 active' : ''}</button>`;
+    html += `<div id="expansion-body" class="${expansionPanelOpen ? '' : 'hidden'}">
+      <p class="hint">Task Force expansion</p>
+      <label class="checkbox-row">
+        <input type="checkbox" id="chk-watari" ${watariEnabled ? 'checked' : ''}>
+        <span class="checkbox-label">Watari<small>A normal Investigator who knows L's identity from the start (and L knows Watari too). Watari is never one of L's 4 suspects.</small></span>
+      </label>
+    </div>`;
+  } else if (watariEnabled) {
+    html += `<p class="hint">Expansion active: Task Force (Watari)</p>`;
+  }
+
   if (isHost) {
     html += canStart
       ? `<button id="btn-start-game" class="primary">Deal Roles &amp; Start</button>`
@@ -332,6 +351,25 @@ function renderLobby(room) {
     el('btn-start-game').addEventListener('click', () => startGame(myRoomCode));
   }
   el('btn-leave-lobby').addEventListener('click', () => leaveLobby(myRoomCode));
+
+  if (isHost) {
+    el('btn-toggle-expansions').addEventListener('click', () => {
+      expansionPanelOpen = !expansionPanelOpen;
+      renderLobby(room);
+    });
+    el('chk-watari').addEventListener('change', (e) => {
+      setWatariEnabled(myRoomCode, e.target.checked);
+    });
+  }
+}
+
+async function setWatariEnabled(code, enabled) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.status !== 'lobby' || room.hostUid !== myUid) return room;
+    room.settings = room.settings || {};
+    room.settings.watari = !!enabled;
+    return room;
+  });
 }
 
 async function leaveLobby(code) {
@@ -364,7 +402,9 @@ async function startGame(code) {
     const playerIds = Object.keys(obj(room.players));
     const count = playerIds.length;
     if (count < 7 || count > 10) return room;
-    const roles = shuffle(['L', 'Kira', 'KiraFollower'].concat(Array(count - 3).fill('Investigator')));
+    const watariEnabled = !!(room.settings && room.settings.watari);
+    const fixedRoles = ['L', 'Kira', 'KiraFollower'].concat(watariEnabled ? ['Watari'] : []);
+    const roles = shuffle(fixedRoles.concat(Array(count - fixedRoles.length).fill('Investigator')));
     const firstNames = shuffle(FIRST_NAMES).slice(0, count);
     const lastNames = shuffle(LAST_NAMES).slice(0, count);
     const secrets = {};
@@ -379,6 +419,7 @@ async function startGame(code) {
     room.lPlayerId = playerIds.find(id => secrets[id].role === 'L');
     room.kiraPlayerId = playerIds.find(id => secrets[id].role === 'Kira');
     room.followerPlayerId = playerIds.find(id => secrets[id].role === 'KiraFollower');
+    if (watariEnabled) room.watariPlayerId = playerIds.find(id => secrets[id].role === 'Watari');
     room.status = 'reveal';
     return room;
   });
@@ -399,6 +440,9 @@ function renderReveal(room) {
   } else if (mySecret.role === 'L') {
     roleName = 'You are L';
     roleDesc = "Each Information Phase you'll be shown 4 suspects — one is truly Kira. Use missions and votes to find and arrest Kira before it's too late.";
+  } else if (mySecret.role === 'Watari') {
+    roleName = 'You are WATARI';
+    roleDesc = "You're a normal Investigator in every way that matters — vote, join missions, help find Kira. The one difference: you know L's identity from the start, and L knows you. You're never one of L's 4 suspects.";
   } else {
     roleName = 'You are an INVESTIGATOR';
     roleDesc = "You're on L's side. Vote wisely and help complete missions to expose Kira.";
@@ -412,6 +456,12 @@ function renderReveal(room) {
   } else if (mySecret.role === 'KiraFollower' && room.kiraPlayerId && players[room.kiraPlayerId]) {
     const k = players[room.kiraPlayerId];
     partnerHtml = `<div class="role-desc">Kira is <strong>Investigator ${k.label} — ${esc(k.name)}</strong>.</div>`;
+  } else if (mySecret.role === 'Watari' && room.lPlayerId && players[room.lPlayerId]) {
+    const l = players[room.lPlayerId];
+    partnerHtml = `<div class="role-desc">L is <strong>Investigator ${l.label} — ${esc(l.name)}</strong>.</div>`;
+  } else if (mySecret.role === 'L' && room.watariPlayerId && players[room.watariPlayerId]) {
+    const w = players[room.watariPlayerId];
+    partnerHtml = `<div class="role-desc">Watari is <strong>Investigator ${w.label} — ${esc(w.name)}</strong>.</div>`;
   }
 
   const ready = !!mySecret.ready;
@@ -1075,7 +1125,7 @@ async function lRevealSuspects(code) {
     if (Object.keys(obj(room.info.lSuspects)).length > 0) return room;
     const players = obj(room.players), secrets = obj(room.secrets);
     const kiraId = room.kiraPlayerId;
-    const pool = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && id !== room.lPlayerId && id !== kiraId);
+    const pool = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && id !== room.lPlayerId && id !== kiraId && id !== room.watariPlayerId);
     const others = shuffle(pool).slice(0, 3);
     const four = shuffle([kiraId, ...others]);
     room.info.lSuspects = {};

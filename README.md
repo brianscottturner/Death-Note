@@ -102,10 +102,26 @@ Each round has four phases, in order:
   (Kira's team then gets one shared final guess at L's full secret name;
   guessing correctly flips the win back to Kira).
 
+## Expansions
+
+Before dealing roles, the host can tap **🎭 Expansions & Roles** in the
+lobby to opt into extra roles. This panel is host-only — everyone else
+just sees a note if an expansion is active, so there's no confusion about
+who controls it. Choices are locked in once **Deal Roles & Start** is
+tapped.
+
+- **Task Force — Watari**: an Investigator in every practical sense
+  (votes, joins missions, has a secret name to protect) with one twist —
+  Watari knows L's identity from the start, and L knows Watari's. Because
+  L already knows Watari isn't Kira, Watari is never one of the 4
+  suspects L is shown each Information Phase. The Task Force expansion
+  will eventually add two more roles; only Watari is implemented so far.
+
 ## Notes
 
 - **Players**: 7–10. Always exactly 1 L, 1 Kira, 1 Kira Follower, with the
-  rest as Investigators (e.g. a 7-player game is 1/1/1/4).
+  rest as Investigators (e.g. a 7-player game is 1/1/1/4). Add 1 Watari
+  if the Task Force expansion is enabled.
 - **Voting**: majority is a strict majority of alive players who voted
   (more than half). Ties or no majority = nothing happens.
 - **Mission team size**: not validated by the app — it's whatever your
