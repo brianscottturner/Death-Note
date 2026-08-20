@@ -122,12 +122,30 @@ tapped.
   so that L/Kira/Follower not reacting to it doesn't itself look
   suspicious.) The Task Force expansion will eventually add two more
   roles; only Watari is implemented so far.
+- **Special Provisions for Kira — X-Kira**: replaces the normal Kira
+  role. Plays exactly like Kira (same kill guesses, same win conditions)
+  but starts with **no Follower** — X-Kira is alone. Once L's team
+  reaches 3 points, a **Recruit a Follower** panel appears on X-Kira's
+  phone during every Voting Phase (until successful): X-Kira picks 2
+  players, and the app randomly recruits one of them. L and Watari can't
+  be recruited — if exactly one of the two picks is L or Watari, the app
+  recruits the other pick instead of rolling randomly; if X-Kira happens
+  to pick *both* L and Watari, the app recruits a random third player
+  instead, and as a consolation X-Kira learns L and Watari's real
+  identities. Once someone is recruited, they become a normal Kira
+  Follower for the rest of the game (chat, Death Note swap, everything)
+  and the recruitment panel stops appearing. Only one of this
+  expansion's Kira-replacing roles can be active per game; only X-Kira
+  is implemented so far.
 
 ## Notes
 
 - **Players**: 7–10. Always exactly 1 L, 1 Kira, 1 Kira Follower, with the
   rest as Investigators (e.g. a 7-player game is 1/1/1/4). Add 1 Watari
-  if the Task Force expansion is enabled.
+  if the Task Force expansion is enabled. If X-Kira is enabled instead of
+  normal Kira, there's no Follower until/unless one gets recruited
+  mid-game, so the initial split is 1 L, 1 X-Kira, and everyone else an
+  Investigator (plus Watari, if that's also enabled).
 - **Voting**: majority is a strict majority of alive players who voted
   (more than half). Ties or no majority = nothing happens.
 - **Mission team size**: not validated by the app — it's whatever your

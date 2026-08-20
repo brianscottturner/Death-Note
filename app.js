@@ -311,6 +311,8 @@ function renderLobby(room) {
   const count = ids.length;
   const canStart = isHost && count >= 7 && count <= 10;
   const watariEnabled = !!(room.settings && room.settings.watari);
+  const xKiraEnabled = !!(room.settings && room.settings.xKira);
+  const activeCount = (watariEnabled ? 1 : 0) + (xKiraEnabled ? 1 : 0);
 
   let html = `<h1 class="title">DEATH NOTE<br><span class="subtitle">Kira's Game</span></h1>
     <div class="card">
@@ -324,16 +326,22 @@ function renderLobby(room) {
   html += `</div>`;
 
   if (isHost) {
-    html += `<button id="btn-toggle-expansions" class="secondary" type="button">🎭 Expansions &amp; Roles${watariEnabled ? ' — 1 active' : ''}</button>`;
+    html += `<button id="btn-toggle-expansions" class="secondary" type="button">🎭 Expansions &amp; Roles${activeCount ? ` — ${activeCount} active` : ''}</button>`;
     html += `<div id="expansion-body" class="${expansionPanelOpen ? '' : 'hidden'}">
       <p class="hint">Task Force expansion</p>
       <label class="checkbox-row">
         <input type="checkbox" id="chk-watari" ${watariEnabled ? 'checked' : ''}>
         <span class="checkbox-label">Watari<small>A normal Investigator who knows L's identity from the start (and L knows Watari too). Watari is never one of L's 4 suspects.</small></span>
       </label>
+      <p class="hint" style="margin-top:10px;">Special Provisions for Kira</p>
+      <label class="checkbox-row">
+        <input type="checkbox" id="chk-xkira" ${xKiraEnabled ? 'checked' : ''}>
+        <span class="checkbox-label">X-Kira<small>Replaces Kira. Starts with no Follower — once L's team reaches 3 points, X-Kira can try to recruit one during each Voting Phase.</small></span>
+      </label>
     </div>`;
-  } else if (watariEnabled) {
-    html += `<p class="hint">Expansion active: Task Force (Watari)</p>`;
+  } else if (activeCount) {
+    const active = [watariEnabled && 'Watari (Task Force)', xKiraEnabled && 'X-Kira (Special Provisions for Kira)'].filter(Boolean);
+    html += `<p class="hint">Expansion${activeCount > 1 ? 's' : ''} active: ${active.join(', ')}</p>`;
   }
 
   if (isHost) {
@@ -360,6 +368,9 @@ function renderLobby(room) {
     el('chk-watari').addEventListener('change', (e) => {
       setWatariEnabled(myRoomCode, e.target.checked);
     });
+    el('chk-xkira').addEventListener('change', (e) => {
+      setXKiraEnabled(myRoomCode, e.target.checked);
+    });
   }
 }
 
@@ -368,6 +379,15 @@ async function setWatariEnabled(code, enabled) {
     if (!room || room.status !== 'lobby' || room.hostUid !== myUid) return room;
     room.settings = room.settings || {};
     room.settings.watari = !!enabled;
+    return room;
+  });
+}
+
+async function setXKiraEnabled(code, enabled) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.status !== 'lobby' || room.hostUid !== myUid) return room;
+    room.settings = room.settings || {};
+    room.settings.xKira = !!enabled;
     return room;
   });
 }
@@ -403,7 +423,10 @@ async function startGame(code) {
     const count = playerIds.length;
     if (count < 7 || count > 10) return room;
     const watariEnabled = !!(room.settings && room.settings.watari);
-    const fixedRoles = ['L', 'Kira', 'KiraFollower'].concat(watariEnabled ? ['Watari'] : []);
+    const xKiraEnabled = !!(room.settings && room.settings.xKira);
+    const fixedRoles = ['L', 'Kira']
+      .concat(xKiraEnabled ? [] : ['KiraFollower'])
+      .concat(watariEnabled ? ['Watari'] : []);
     const roles = shuffle(fixedRoles.concat(Array(count - fixedRoles.length).fill('Investigator')));
     const firstNames = shuffle(FIRST_NAMES).slice(0, count);
     const lastNames = shuffle(LAST_NAMES).slice(0, count);
@@ -418,7 +441,8 @@ async function startGame(code) {
     room.secrets = secrets;
     room.lPlayerId = playerIds.find(id => secrets[id].role === 'L');
     room.kiraPlayerId = playerIds.find(id => secrets[id].role === 'Kira');
-    room.followerPlayerId = playerIds.find(id => secrets[id].role === 'KiraFollower');
+    // X-Kira starts without a Follower — one is only assigned if/when recruited mid-game.
+    if (!xKiraEnabled) room.followerPlayerId = playerIds.find(id => secrets[id].role === 'KiraFollower');
     if (watariEnabled) room.watariPlayerId = playerIds.find(id => secrets[id].role === 'Watari');
     room.status = 'reveal';
     return room;
@@ -431,7 +455,11 @@ function renderReveal(room) {
   const mySecret = obj(room.secrets)[myPlayerId];
   if (!mySecret) return;
   let roleName, roleDesc;
-  if (mySecret.role === 'Kira') {
+  const isXKira = mySecret.role === 'Kira' && !!(room.settings && room.settings.xKira);
+  if (isXKira) {
+    roleName = 'You are X-KIRA';
+    roleDesc = "You lead the evil team alone — no Follower to start. Kill investigators by correctly guessing their secret names. Once L's team reaches 3 points, you can try to recruit a Follower during the Voting Phase. Avoid being arrested.";
+  } else if (mySecret.role === 'Kira') {
     roleName = 'You are KIRA';
     roleDesc = "You lead the evil team. Coordinate with your Follower during the Information Phase. Kill investigators by correctly guessing their secret names. Avoid being arrested.";
   } else if (mySecret.role === 'KiraFollower') {
@@ -841,6 +869,40 @@ function renderVotingPhase(room) {
     html += `<button id="btn-voting-continue" class="primary">Continue</button>`;
   }
   html += `</div>`;
+
+  // X-Kira's private recruitment attempt — additive to normal voting, visible
+  // only to X-Kira (while picking/pending) and to whoever just got recruited.
+  const xKiraActive = !!(room.settings && room.settings.xKira);
+  const amXKira = xKiraActive && myPlayerId === room.kiraPlayerId;
+  const recruitEligible = amXKira && !room.followerPlayerId && (room.lScore || 0) >= 3 && !voting.recruitDone;
+  const picks = Object.keys(obj(voting.recruitPicks));
+
+  if (recruitEligible) {
+    html += `<div class="card">
+      <h3>Recruit a Follower</h3>
+      <p class="hint">L's team has reached 3 points. Choose 2 players to attempt to recruit — the app will pick one of them at random. (${picks.length}/2 selected)</p>
+      <div id="recruit-list">`;
+    aliveIds.filter(id => id !== myPlayerId).forEach(id => {
+      const selected = picks.includes(id);
+      html += `<button class="choice ${selected ? 'selected' : ''}" data-id="${id}">${selected ? '✓ ' : ''}${players[id].label} — ${esc(players[id].name)}</button>`;
+    });
+    html += `</div><button id="btn-recruit-confirm" class="danger" ${picks.length === 2 ? '' : 'disabled'}>Confirm Recruitment Targets</button>
+    </div>`;
+  } else if (amXKira && voting.recruitDone && voting.recruitedId) {
+    const recruited = players[voting.recruitedId];
+    html += `<div class="card"><p><strong>${recruited.label} — ${esc(recruited.name)} has joined you as your Follower.</strong></p>`;
+    if (voting.recruitRevealLId && voting.recruitRevealWatariId) {
+      const lp = players[voting.recruitRevealLId], wp = players[voting.recruitRevealWatariId];
+      html += `<p class="hint">Both of your original picks turned out to be protected — which tells you exactly who they are: L is ${lp.label} — ${esc(lp.name)}, and Watari is ${wp.label} — ${esc(wp.name)}. A random Investigator was recruited instead.</p>`;
+    }
+    html += `</div>`;
+  } else if (amXKira && voting.recruitDone && !voting.recruitedId) {
+    html += `<div class="card"><p>Both of your picks were protected, and no one else was available to recruit instead.</p></div>`;
+  } else if (xKiraActive && voting.recruitDone && voting.recruitedId === myPlayerId) {
+    const kira = players[room.kiraPlayerId];
+    html += `<div class="card"><p><strong>You have been recruited into a Kira Follower.</strong></p><p>X-Kira is <strong>${kira.label} — ${esc(kira.name)}</strong>.</p></div>`;
+  }
+
   el('round-content').innerHTML = html;
 
   if (!voting.resolved) {
@@ -851,7 +913,73 @@ function renderVotingPhase(room) {
     el('btn-voting-continue').addEventListener('click', () => continueFromVotingResult(myRoomCode));
   }
 
+  if (recruitEligible) {
+    document.querySelectorAll('#recruit-list .choice').forEach(btn => {
+      btn.addEventListener('click', () => toggleRecruitPick(myRoomCode, btn.dataset.id));
+    });
+    const confirmBtn = el('btn-recruit-confirm');
+    if (confirmBtn && picks.length === 2) confirmBtn.addEventListener('click', () => confirmRecruit(myRoomCode));
+  }
+
   maybeResolveVoting(room, myRoomCode);
+}
+
+async function toggleRecruitPick(code, playerId) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'voting' || room.voting.recruitDone) return room;
+    if (myPlayerId !== room.kiraPlayerId || playerId === room.kiraPlayerId) return room;
+    if (!(room.settings && room.settings.xKira) || room.followerPlayerId) return room;
+    room.voting.recruitPicks = obj(room.voting.recruitPicks);
+    const picks = room.voting.recruitPicks;
+    if (picks[playerId]) {
+      delete picks[playerId];
+    } else if (Object.keys(picks).length < 2) {
+      picks[playerId] = true;
+    }
+    return room;
+  });
+}
+
+async function confirmRecruit(code) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'voting' || room.voting.recruitDone) return room;
+    if (myPlayerId !== room.kiraPlayerId) return room;
+    if (!(room.settings && room.settings.xKira) || room.followerPlayerId) return room;
+    if ((room.lScore || 0) < 3) return room;
+    const picks = Object.keys(obj(room.voting.recruitPicks));
+    if (picks.length !== 2) return room;
+    const [a, b] = picks;
+    const secrets = obj(room.secrets);
+    if (!secrets[a] || !secrets[a].alive || !secrets[b] || !secrets[b].alive) return room;
+
+    const isProtected = (id) => id === room.lPlayerId || id === room.watariPlayerId;
+    const aProtected = isProtected(a), bProtected = isProtected(b);
+    let recruitedId = null;
+    let revealBoth = false;
+    if (aProtected && bProtected) {
+      const pool = Object.keys(secrets).filter(id => secrets[id].alive && id !== room.kiraPlayerId && id !== a && id !== b);
+      recruitedId = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+      revealBoth = true;
+    } else if (aProtected) {
+      recruitedId = b;
+    } else if (bProtected) {
+      recruitedId = a;
+    } else {
+      recruitedId = Math.random() < 0.5 ? a : b;
+    }
+
+    room.voting.recruitDone = true;
+    if (recruitedId) {
+      room.secrets[recruitedId].role = 'KiraFollower';
+      room.followerPlayerId = recruitedId;
+      room.voting.recruitedId = recruitedId;
+    }
+    if (revealBoth) {
+      room.voting.recruitRevealLId = room.lPlayerId;
+      room.voting.recruitRevealWatariId = room.watariPlayerId;
+    }
+    return room;
+  });
 }
 
 async function castVote(code, targetOrSkip) {
@@ -1003,16 +1131,18 @@ function renderInformationPhase(room) {
         <button id="btn-l-done" class="primary">Done</button>`;
     }
   } else if (amKiraTeam) {
-    const kira = players[room.kiraPlayerId], follower = players[room.followerPlayerId];
-    html += `<p><strong>Kira:</strong> ${kira.label} — ${esc(kira.name)} &nbsp; <strong>Follower:</strong> ${follower.label} — ${esc(follower.name)}</p>
-      <p class="hint">Share what you learned during the Mission Phase and strategize.</p>
+    const kira = players[room.kiraPlayerId];
+    const follower = room.followerPlayerId ? players[room.followerPlayerId] : null;
+    html += `<p><strong>Kira:</strong> ${kira.label} — ${esc(kira.name)}${follower ? ` &nbsp; <strong>Follower:</strong> ${follower.label} — ${esc(follower.name)}` : ' &nbsp; <em>(no Follower yet)</em>'}</p>
+      <p class="hint">${follower ? 'Share what you learned during the Mission Phase and strategize.' : "You're operating alone this round."}</p>
       <div id="info-timer" class="hint"></div><hr>`;
 
     if (info.kiraDone) {
       html += `<p class="hint">Done. Waiting for L to finish...</p>`;
     } else {
-      const canSwap = !room.lastInfoPhaseSwapped && !info.swappedThisPhase;
-      if (info.swappedThisPhase) html += `<p class="hint">The Death Note was swapped this phase.</p>`;
+      const canSwap = !!follower && !room.lastInfoPhaseSwapped && !info.swappedThisPhase;
+      if (!follower) { /* nothing to swap with yet */ }
+      else if (info.swappedThisPhase) html += `<p class="hint">The Death Note was swapped this phase.</p>`;
       else if (canSwap) html += `<button id="btn-swap-note" class="secondary">Swap the Death Note (Kira ⇄ Follower)</button>`;
       else html += `<p class="hint">The Death Note was swapped last time — cannot swap again this round.</p>`;
 
@@ -1038,12 +1168,14 @@ function renderInformationPhase(room) {
       html += `<hr><button id="btn-info-finish" class="primary">Finished — Continue</button>`;
     }
 
-    html += `<hr><p><strong>Chat with your ${myPlayerId === room.kiraPlayerId ? 'Follower' : 'Kira'}</strong></p>
-      <div class="chat-log" id="kira-chat-log">${renderChatLog(obj(room.kiraChat), players)}</div>
-      <div class="chat-input-row">
-        <input type="text" id="kira-chat-input" placeholder="Message..." maxlength="200">
-        <button id="btn-kira-chat-send" class="secondary">Send</button>
-      </div>`;
+    if (follower) {
+      html += `<hr><p><strong>Chat with your ${myPlayerId === room.kiraPlayerId ? 'Follower' : 'Kira'}</strong></p>
+        <div class="chat-log" id="kira-chat-log">${renderChatLog(obj(room.kiraChat), players)}</div>
+        <div class="chat-input-row">
+          <input type="text" id="kira-chat-input" placeholder="Message..." maxlength="200">
+          <button id="btn-kira-chat-send" class="secondary">Send</button>
+        </div>`;
+    }
   } else {
     html += `<p class="waiting">Everyone, close your eyes.<br>
       L is ${info.lDone ? 'done' : 'reviewing suspects'}...<br>
@@ -1148,6 +1280,7 @@ async function swapDeathNote(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || room.phase !== 'information' || room.info.kiraDone) return room;
     if (room.lastInfoPhaseSwapped || room.info.swappedThisPhase) return room;
+    if (!room.followerPlayerId) return room;
     const kId = room.kiraPlayerId, fId = room.followerPlayerId;
     room.secrets[kId].role = 'KiraFollower';
     room.secrets[fId].role = 'Kira';
