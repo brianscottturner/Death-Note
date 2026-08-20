@@ -105,10 +105,19 @@ Each round has four phases, in order:
 ## Expansions
 
 Before dealing roles, the host can tap **🎭 Expansions & Roles** in the
-lobby to opt into extra roles. This panel is host-only — everyone else
-just sees a note if an expansion is active, so there's no confusion about
-who controls it. Choices are locked in once **Deal Roles & Start** is
-tapped.
+lobby to opt into extra roles. This panel is host-only. Choices are
+locked in once **Deal Roles & Start** is tapped.
+
+Each expansion role has three settings, not just an on/off switch:
+
+- **On** — guaranteed to be in the game.
+- **Off** — guaranteed not to be in the game.
+- **Random** — a 50/50 coin flip, decided independently for that role
+  the moment roles are dealt. The app never announces which way a
+  Random role landed — not to the host, not to anyone — so a game with
+  a role set to Random carries real uncertainty about whether it's in
+  play at all. (Non-host players only see a lobby hint for roles set to
+  **On**; Random and Off both stay silent pre-game, on purpose.)
 
 - **Task Force — Watari**: an Investigator in every practical sense
   (votes, joins missions, has a secret name to protect) with one twist —

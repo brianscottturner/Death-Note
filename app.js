@@ -187,7 +187,7 @@ async function createRoom(name, customCode) {
     round: 0, phase: null,
     lScore: 0, kiraScore: 0,
     lastInfoPhaseSwapped: false,
-    settings: { watari: false },
+    settings: { watari: 'off', xKira: 'off' },
     mission: { step: null },
     voting: { resolved: false },
     info: { lDone: false, kiraDone: false, swappedThisPhase: false },
@@ -310,9 +310,9 @@ function renderLobby(room) {
   const isHost = myUid === room.hostUid;
   const count = ids.length;
   const canStart = isHost && count >= 7 && count <= 10;
-  const watariEnabled = !!(room.settings && room.settings.watari);
-  const xKiraEnabled = !!(room.settings && room.settings.xKira);
-  const activeCount = (watariEnabled ? 1 : 0) + (xKiraEnabled ? 1 : 0);
+  const watariSetting = (room.settings && room.settings.watari) || 'off';
+  const xKiraSetting = (room.settings && room.settings.xKira) || 'off';
+  const configuredCount = (watariSetting !== 'off' ? 1 : 0) + (xKiraSetting !== 'off' ? 1 : 0);
 
   let html = `<h1 class="title">DEATH NOTE<br><span class="subtitle">Kira's Game</span></h1>
     <div class="card">
@@ -325,23 +325,28 @@ function renderLobby(room) {
   });
   html += `</div>`;
 
-  if (isHost) {
-    html += `<button id="btn-toggle-expansions" class="secondary" type="button">🎭 Expansions &amp; Roles${activeCount ? ` — ${activeCount} active` : ''}</button>`;
-    html += `<div id="expansion-body" class="${expansionPanelOpen ? '' : 'hidden'}">
-      <p class="hint">Task Force expansion</p>
-      <label class="checkbox-row">
-        <input type="checkbox" id="chk-watari" ${watariEnabled ? 'checked' : ''}>
-        <span class="checkbox-label">Watari<small>A normal Investigator who knows L's identity from the start (and L knows Watari too). Watari is never one of L's 4 suspects.</small></span>
-      </label>
-      <p class="hint" style="margin-top:10px;">Special Provisions for Kira</p>
-      <label class="checkbox-row">
-        <input type="checkbox" id="chk-xkira" ${xKiraEnabled ? 'checked' : ''}>
-        <span class="checkbox-label">X-Kira<small>Replaces Kira. Starts with no Follower — once L's team reaches 3 points, X-Kira can try to recruit one during each Voting Phase.</small></span>
-      </label>
+  const roleSettingRow = (role, setting, title, desc) => `
+    <div class="role-setting">
+      <div class="role-setting-label">${title}<small>${desc}</small></div>
+      <div class="toggle-row" data-role="${role}">
+        <button class="choice ${setting === 'on' ? 'selected' : ''}" data-role="${role}" data-value="on">On</button>
+        <button class="choice ${setting === 'off' ? 'selected' : ''}" data-role="${role}" data-value="off">Off</button>
+        <button class="choice ${setting === 'random' ? 'selected' : ''}" data-role="${role}" data-value="random">Random</button>
+      </div>
     </div>`;
-  } else if (activeCount) {
-    const active = [watariEnabled && 'Watari (Task Force)', xKiraEnabled && 'X-Kira (Special Provisions for Kira)'].filter(Boolean);
-    html += `<p class="hint">Expansion${activeCount > 1 ? 's' : ''} active: ${active.join(', ')}</p>`;
+
+  if (isHost) {
+    html += `<button id="btn-toggle-expansions" class="secondary" type="button">🎭 Expansions &amp; Roles${configuredCount ? ` — ${configuredCount} configured` : ''}</button>`;
+    html += `<div id="expansion-body" class="${expansionPanelOpen ? '' : 'hidden'}">
+      <p class="hint">On = guaranteed in the game. Off = guaranteed out. Random = 50/50, decided when roles are dealt — and never announced either way.</p>
+      <p class="hint" style="margin-top:10px;">Task Force expansion</p>`;
+    html += roleSettingRow('watari', watariSetting, 'Watari', "A normal Investigator who knows L's identity from the start (and L knows Watari too). Watari is never one of L's 4 suspects.");
+    html += `<p class="hint" style="margin-top:10px;">Special Provisions for Kira</p>`;
+    html += roleSettingRow('xKira', xKiraSetting, 'X-Kira', 'Replaces Kira. Starts with no Follower — once L\'s team reaches 3 points, X-Kira gets one chance to recruit one during a Voting Phase.');
+    html += `</div>`;
+  } else if (watariSetting === 'on' || xKiraSetting === 'on') {
+    const active = [watariSetting === 'on' && 'Watari (Task Force)', xKiraSetting === 'on' && 'X-Kira (Special Provisions for Kira)'].filter(Boolean);
+    html += `<p class="hint">Expansion${active.length > 1 ? 's' : ''} active: ${active.join(', ')}</p>`;
   }
 
   if (isHost) {
@@ -365,29 +370,17 @@ function renderLobby(room) {
       expansionPanelOpen = !expansionPanelOpen;
       renderLobby(room);
     });
-    el('chk-watari').addEventListener('change', (e) => {
-      setWatariEnabled(myRoomCode, e.target.checked);
-    });
-    el('chk-xkira').addEventListener('change', (e) => {
-      setXKiraEnabled(myRoomCode, e.target.checked);
+    document.querySelectorAll('.toggle-row .choice').forEach(btn => {
+      btn.addEventListener('click', () => setExpansionRoleSetting(myRoomCode, btn.dataset.role, btn.dataset.value));
     });
   }
 }
 
-async function setWatariEnabled(code, enabled) {
+async function setExpansionRoleSetting(code, role, value) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || room.status !== 'lobby' || room.hostUid !== myUid) return room;
     room.settings = room.settings || {};
-    room.settings.watari = !!enabled;
-    return room;
-  });
-}
-
-async function setXKiraEnabled(code, enabled) {
-  await runTransaction(ref(db, `rooms/${code}`), (room) => {
-    if (!room || room.status !== 'lobby' || room.hostUid !== myUid) return room;
-    room.settings = room.settings || {};
-    room.settings.xKira = !!enabled;
+    room.settings[role] = value;
     return room;
   });
 }
@@ -422,8 +415,9 @@ async function startGame(code) {
     const playerIds = Object.keys(obj(room.players));
     const count = playerIds.length;
     if (count < 7 || count > 10) return room;
-    const watariEnabled = !!(room.settings && room.settings.watari);
-    const xKiraEnabled = !!(room.settings && room.settings.xKira);
+    const resolveRoleSetting = (setting) => setting === 'on' ? true : setting === 'random' ? Math.random() < 0.5 : false;
+    const watariEnabled = resolveRoleSetting(room.settings && room.settings.watari);
+    const xKiraEnabled = resolveRoleSetting(room.settings && room.settings.xKira);
     const fixedRoles = ['L', 'Kira']
       .concat(xKiraEnabled ? [] : ['KiraFollower'])
       .concat(watariEnabled ? ['Watari'] : []);
@@ -441,6 +435,10 @@ async function startGame(code) {
     room.secrets = secrets;
     room.lPlayerId = playerIds.find(id => secrets[id].role === 'L');
     room.kiraPlayerId = playerIds.find(id => secrets[id].role === 'Kira');
+    // The resolved (post-coin-flip) outcome, distinct from room.settings.xKira
+    // which stays 'on'/'off'/'random' as configured — every in-game check
+    // needs the actual dealt result, not the pre-deal setting.
+    room.xKiraActive = xKiraEnabled;
     // X-Kira starts without a Follower — one is only assigned if/when recruited mid-game.
     if (!xKiraEnabled) room.followerPlayerId = playerIds.find(id => secrets[id].role === 'KiraFollower');
     if (watariEnabled) room.watariPlayerId = playerIds.find(id => secrets[id].role === 'Watari');
@@ -455,7 +453,7 @@ function renderReveal(room) {
   const mySecret = obj(room.secrets)[myPlayerId];
   if (!mySecret) return;
   let roleName, roleDesc;
-  const isXKira = mySecret.role === 'Kira' && !!(room.settings && room.settings.xKira);
+  const isXKira = mySecret.role === 'Kira' && !!room.xKiraActive;
   if (isXKira) {
     roleName = 'You are X-KIRA';
     roleDesc = "You lead the evil team alone — no Follower to start. Kill investigators by correctly guessing their secret names. Once L's team reaches 3 points, you can try to recruit a Follower during the Voting Phase. Avoid being arrested.";
@@ -875,7 +873,7 @@ function renderVotingPhase(room) {
   // This is a one-time power: room.xKiraRecruitOffered is set permanently
   // (never resets between rounds, unlike room.voting) the moment the panel
   // has been offered once, whether or not X-Kira actually used it.
-  const xKiraActive = !!(room.settings && room.settings.xKira);
+  const xKiraActive = !!room.xKiraActive;
   const amXKira = xKiraActive && myPlayerId === room.kiraPlayerId;
   const recruitEligible = amXKira && !room.followerPlayerId && (room.lScore || 0) >= 3 && !room.xKiraRecruitOffered;
   const picks = Object.keys(obj(voting.recruitPicks));
@@ -934,7 +932,7 @@ async function toggleRecruitPick(code, playerId) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || room.phase !== 'voting' || room.xKiraRecruitOffered) return room;
     if (myPlayerId !== room.kiraPlayerId || playerId === room.kiraPlayerId) return room;
-    if (!(room.settings && room.settings.xKira) || room.followerPlayerId) return room;
+    if (!room.xKiraActive || room.followerPlayerId) return room;
     room.voting.recruitPicks = obj(room.voting.recruitPicks);
     const picks = room.voting.recruitPicks;
     if (picks[playerId]) {
@@ -950,7 +948,7 @@ async function confirmRecruit(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || room.phase !== 'voting' || room.xKiraRecruitOffered) return room;
     if (myPlayerId !== room.kiraPlayerId) return room;
-    if (!(room.settings && room.settings.xKira) || room.followerPlayerId) return room;
+    if (!room.xKiraActive || room.followerPlayerId) return room;
     if ((room.lScore || 0) < 3) return room;
     const picks = Object.keys(obj(room.voting.recruitPicks));
     if (picks.length !== 2) return room;
@@ -1039,7 +1037,7 @@ async function continueFromVotingResult(code) {
     if (room.endgame && room.endgame.active) return room;
     // If X-Kira's one-time recruitment offer was available this round but never
     // used, the window closes here rather than reappearing next round.
-    if (room.settings && room.settings.xKira && !room.followerPlayerId && !room.xKiraRecruitOffered && (room.lScore || 0) >= 3) {
+    if (room.xKiraActive && !room.followerPlayerId && !room.xKiraRecruitOffered && (room.lScore || 0) >= 3) {
       room.xKiraRecruitOffered = true;
     }
     room.phase = 'information';

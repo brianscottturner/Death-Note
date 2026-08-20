@@ -265,28 +265,35 @@ hr {
   margin: 10px 0;
 }
 
-.checkbox-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
+.role-setting {
   padding: 10px 0;
-  cursor: pointer;
+  border-top: 1px solid var(--border);
 }
-.checkbox-row input[type="checkbox"] {
-  width: auto;
-  margin: 3px 0 0;
-  flex-shrink: 0;
+.role-setting:first-child {
+  border-top: none;
 }
-.checkbox-row .checkbox-label {
+.role-setting-label {
   font-size: 0.92rem;
   color: var(--text);
 }
-.checkbox-row .checkbox-label small {
+.role-setting-label small {
   display: block;
   color: var(--text-dim);
   font-size: 0.8rem;
   margin-top: 2px;
   line-height: 1.4;
+}
+.toggle-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.toggle-row button {
+  flex: 1;
+  width: auto;
+  margin: 0;
+  padding: 8px 4px;
+  font-size: 0.85rem;
 }
 
 .chat-log {
