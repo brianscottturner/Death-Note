@@ -187,7 +187,7 @@ async function createRoom(name, customCode) {
     round: 0, phase: null,
     lScore: 0, kiraScore: 0,
     lastInfoPhaseSwapped: false,
-    settings: { watari: 'off', xKira: 'off' },
+    settings: { watari: 'off', xKira: 'off', mello: 'off' },
     mission: { step: null },
     voting: { resolved: false },
     info: { lDone: false, kiraDone: false, swappedThisPhase: false },
@@ -312,7 +312,8 @@ function renderLobby(room) {
   const canStart = isHost && count >= 7 && count <= 10;
   const watariSetting = (room.settings && room.settings.watari) || 'off';
   const xKiraSetting = (room.settings && room.settings.xKira) || 'off';
-  const configuredCount = (watariSetting !== 'off' ? 1 : 0) + (xKiraSetting !== 'off' ? 1 : 0);
+  const melloSetting = (room.settings && room.settings.mello) || 'off';
+  const configuredCount = (watariSetting !== 'off' ? 1 : 0) + (xKiraSetting !== 'off' ? 1 : 0) + (melloSetting !== 'off' ? 1 : 0);
 
   let html = `<h1 class="title">DEATH NOTE<br><span class="subtitle">Kira's Game</span></h1>
     <div class="card">
@@ -343,9 +344,10 @@ function renderLobby(room) {
     html += roleSettingRow('watari', watariSetting, 'Watari', "A normal Investigator who knows L's identity from the start (and L knows Watari too). Watari is never one of L's 4 suspects.");
     html += `<p class="hint" style="margin-top:10px;">Special Provisions for Kira</p>`;
     html += roleSettingRow('xKira', xKiraSetting, 'X-Kira', 'Replaces Kira. Starts with no Follower — once L\'s team reaches 3 points, X-Kira gets one chance to recruit one during a Voting Phase.');
+    html += roleSettingRow('mello', melloSetting, 'Mello', "A neutral third team of one. Can attempt to steal the Death Note from Kira during the Information Phase — succeed, and Mello becomes the new Kira while the old Kira becomes the new Mello. Two failed attempts (by whoever currently holds the role), or an arrest, means elimination.");
     html += `</div>`;
-  } else if (watariSetting === 'on' || xKiraSetting === 'on') {
-    const active = [watariSetting === 'on' && 'Watari (Task Force)', xKiraSetting === 'on' && 'X-Kira (Special Provisions for Kira)'].filter(Boolean);
+  } else if (watariSetting === 'on' || xKiraSetting === 'on' || melloSetting === 'on') {
+    const active = [watariSetting === 'on' && 'Watari (Task Force)', xKiraSetting === 'on' && 'X-Kira (Special Provisions for Kira)', melloSetting === 'on' && 'Mello (Special Provisions for Kira)'].filter(Boolean);
     html += `<p class="hint">Expansion${active.length > 1 ? 's' : ''} active: ${active.join(', ')}</p>`;
   }
 
@@ -418,9 +420,11 @@ async function startGame(code) {
     const resolveRoleSetting = (setting) => setting === 'on' ? true : setting === 'random' ? Math.random() < 0.5 : false;
     const watariEnabled = resolveRoleSetting(room.settings && room.settings.watari);
     const xKiraEnabled = resolveRoleSetting(room.settings && room.settings.xKira);
+    const melloEnabled = resolveRoleSetting(room.settings && room.settings.mello);
     const fixedRoles = ['L', 'Kira']
       .concat(xKiraEnabled ? [] : ['KiraFollower'])
-      .concat(watariEnabled ? ['Watari'] : []);
+      .concat(watariEnabled ? ['Watari'] : [])
+      .concat(melloEnabled ? ['Mello'] : []);
     const roles = shuffle(fixedRoles.concat(Array(count - fixedRoles.length).fill('Investigator')));
     const firstNames = shuffle(FIRST_NAMES).slice(0, count);
     const lastNames = shuffle(LAST_NAMES).slice(0, count);
@@ -429,7 +433,7 @@ async function startGame(code) {
       secrets[id] = {
         role: roles[i], firstName: firstNames[i], lastName: lastNames[i],
         alive: true, skipNextMission: false, skipNextInfo: false,
-        wrongGuessCount: 0, immune: false, ready: false
+        wrongGuessCount: 0, immune: false, ready: false, wrongStealCount: 0
       };
     });
     room.secrets = secrets;
@@ -442,6 +446,7 @@ async function startGame(code) {
     // X-Kira starts without a Follower — one is only assigned if/when recruited mid-game.
     if (!xKiraEnabled) room.followerPlayerId = playerIds.find(id => secrets[id].role === 'KiraFollower');
     if (watariEnabled) room.watariPlayerId = playerIds.find(id => secrets[id].role === 'Watari');
+    if (melloEnabled) room.melloPlayerId = playerIds.find(id => secrets[id].role === 'Mello');
     room.status = 'reveal';
     return room;
   });
@@ -469,6 +474,9 @@ function renderReveal(room) {
   } else if (mySecret.role === 'Watari') {
     roleName = 'You are WATARI';
     roleDesc = "You're a normal Investigator in every way that matters — vote, join missions, help find Kira. The one difference: you know L's identity from the start, and L knows you. You're never one of L's 4 suspects.";
+  } else if (mySecret.role === 'Mello') {
+    roleName = 'You are MELLO';
+    roleDesc = "A team of one — not with L, not with Kira. Your goal: steal the Death Note and become the new Kira yourself. During the Information Phase you can guess who's holding it. You get 2 attempts total, for as long as you hold this role — fail both, or get arrested, and you're eliminated.";
   } else {
     roleName = 'You are an INVESTIGATOR';
     roleDesc = "You're on L's side. Vote wisely and help complete missions to expose Kira.";
@@ -861,8 +869,10 @@ function renderVotingPhase(room) {
       const arrested = players[voting.arrestedId];
       const arrestedSecret = secrets[voting.arrestedId];
       html += `<p><strong>Investigator ${arrested.label} has been arrested.</strong></p>
-        <p>They must reveal their secret identity: <strong>${arrestedSecret.firstName} ${arrestedSecret.lastName}</strong></p>
-        <p class="hint">${arrested.label} will sit out the next mission and next Information Phase.</p>`;
+        <p>They must reveal their secret identity: <strong>${arrestedSecret.firstName} ${arrestedSecret.lastName}</strong></p>`;
+      html += arrestedSecret.alive === false
+        ? `<p class="hint">${arrested.label} is eliminated from the game entirely.</p>`
+        : `<p class="hint">${arrested.label} will sit out the next mission and next Information Phase.</p>`;
     }
     html += `<button id="btn-voting-continue" class="primary">Continue</button>`;
   }
@@ -1025,6 +1035,12 @@ async function maybeResolveVoting(room, code) {
       s[arrested].skipNextInfo = true;
       if (s[arrested].role === 'Kira') {
         r.endgame = { active: true, resolved: false };
+      } else if (s[arrested].role === 'Mello') {
+        // Neutral role — arrest eliminates Mello outright, same as failing
+        // both steal attempts, rather than just sitting out a round.
+        s[arrested].alive = false;
+        r.pendingDeaths = obj(r.pendingDeaths);
+        r.pendingDeaths[arrested] = true;
       }
     }
     return r;
@@ -1044,7 +1060,9 @@ async function continueFromVotingResult(code) {
     const l = room.secrets[room.lPlayerId];
     const lNeedsToAct = !!(l && l.alive && !l.skipNextInfo);
     if (l && l.skipNextInfo) l.skipNextInfo = false;
-    room.info = { lDone: !lNeedsToAct, kiraDone: false, swappedThisPhase: false, kiraDeadline: Date.now() + KIRA_TURN_MS };
+    const mello = room.melloPlayerId ? room.secrets[room.melloPlayerId] : null;
+    const melloNeedsToAct = !!(mello && mello.alive);
+    room.info = { lDone: !lNeedsToAct, kiraDone: false, melloDone: !melloNeedsToAct, swappedThisPhase: false, kiraDeadline: Date.now() + KIRA_TURN_MS };
     return room;
   });
 }
@@ -1109,6 +1127,7 @@ function renderInformationPhase(room) {
   const info = obj(room.info);
   const amL = myPlayerId === room.lPlayerId;
   const amKiraTeam = myPlayerId === room.kiraPlayerId || myPlayerId === room.followerPlayerId;
+  const amMello = myPlayerId === room.melloPlayerId && secrets[room.melloPlayerId] && secrets[room.melloPlayerId].alive;
 
   // Preserve any in-progress kill-guess form selections and chat input across
   // re-renders, since this panel is viewed by two separate devices (Kira +
@@ -1119,6 +1138,7 @@ function renderInformationPhase(room) {
   const prevKillLast = el('kill-last') ? el('kill-last').value : null;
   const prevChatInput = el('kira-chat-input') ? el('kira-chat-input').value : null;
   const prevChatFocused = document.activeElement && document.activeElement.id === 'kira-chat-input';
+  const prevStealTarget = el('steal-target') ? el('steal-target').value : null;
 
   let html = `<h2>Information Phase</h2><div class="card pass-card">`;
 
@@ -1144,6 +1164,10 @@ function renderInformationPhase(room) {
   } else if (amKiraTeam) {
     const kira = players[room.kiraPlayerId];
     const follower = room.followerPlayerId ? players[room.followerPlayerId] : null;
+    const stealResult = info.stealResult;
+    if (stealResult && stealResult.success && stealResult.thief === myPlayerId) {
+      html += `<p class="hint"><strong>You successfully stole the Death Note. You are now Kira.</strong></p>`;
+    }
     html += `<p><strong>Kira:</strong> ${kira.label} — ${esc(kira.name)}${follower ? ` &nbsp; <strong>Follower:</strong> ${follower.label} — ${esc(follower.name)}` : ' &nbsp; <em>(no Follower yet)</em>'}</p>
       <p class="hint">${follower ? 'Share what you learned during the Mission Phase and strategize.' : "You're operating alone this round."}</p>
       <div id="info-timer" class="hint"></div><hr>`;
@@ -1187,10 +1211,32 @@ function renderInformationPhase(room) {
           <button id="btn-kira-chat-send" class="secondary">Send</button>
         </div>`;
     }
+  } else if (amMello) {
+    const stealResult = info.stealResult;
+    if (stealResult && stealResult.success && stealResult.victim === myPlayerId) {
+      html += `<p class="hint"><strong>Your Death Note has been stolen. You are now Mello.</strong></p>`;
+    }
+    if (info.melloDone) {
+      html += `<p class="hint">Done. Waiting for the others to finish...</p>`;
+    } else {
+      const attemptsUsed = (secrets[room.melloPlayerId] && secrets[room.melloPlayerId].wrongStealCount) || 0;
+      const targets = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && id !== room.melloPlayerId);
+      html += `<p><strong>Attempt to steal the Death Note?</strong></p>
+        <p class="hint">${2 - attemptsUsed} attempt(s) remaining, for as long as you hold this role. Fail both, and you're eliminated.</p>`;
+      if (targets.length === 0) {
+        html += `<p class="hint">No valid targets remain.</p><button id="btn-mello-finish" class="primary">Continue</button>`;
+      } else {
+        html += `<label>Who has the Death Note?</label>
+          <select id="steal-target">${targets.map(id => `<option value="${id}">${players[id].label} — ${esc(players[id].name)}</option>`).join('')}</select>
+          <button id="btn-steal-submit" class="danger">Attempt Steal</button>
+          <hr><button id="btn-mello-finish" class="secondary">Don't Steal — Continue</button>`;
+      }
+    }
   } else {
+    const melloWaiting = melloStillNeedsToAct(room) ? `<br>Mello is ${info.melloDone ? 'done' : 'deciding'}...` : '';
     html += `<p class="waiting">Everyone, close your eyes.<br>
       L is ${info.lDone ? 'done' : 'reviewing suspects'}...<br>
-      Kira and the Follower are ${info.kiraDone ? 'done' : 'strategizing'}...</p>
+      Kira and the Follower are ${info.kiraDone ? 'done' : 'strategizing'}...${melloWaiting}</p>
       <div id="info-timer" class="hint" style="text-align:center;"></div>
       <p class="hint">Please use this time to take notes, write down suspicions, and write down a plan for next round.</p>`;
   }
@@ -1244,23 +1290,37 @@ function renderInformationPhase(room) {
       el('btn-info-finish').addEventListener('click', () => finishKiraTeamTurn(myRoomCode));
     }
   }
+  if (amMello && !info.melloDone) {
+    const stealSel = el('steal-target');
+    if (stealSel && prevStealTarget && [...stealSel.options].some(o => o.value === prevStealTarget)) stealSel.value = prevStealTarget;
+    const stealBtn = el('btn-steal-submit');
+    if (stealBtn) stealBtn.addEventListener('click', () => submitStealAttempt(myRoomCode, el('steal-target').value));
+    const melloFinishBtn = el('btn-mello-finish');
+    if (melloFinishBtn) melloFinishBtn.addEventListener('click', () => finishMelloTurn(myRoomCode));
+  }
 
   maybeAdvanceFromInfo(room, myRoomCode);
+}
+
+function melloStillNeedsToAct(room) {
+  if (!room.melloPlayerId) return false;
+  const mello = obj(room.secrets)[room.melloPlayerId];
+  return !!(mello && mello.alive);
 }
 
 async function maybeAdvanceFromInfo(room, code) {
   if (room.phase !== 'information') return;
   const info = obj(room.info);
-  if (!info.lDone || !info.kiraDone) return;
+  if (!info.lDone || !info.kiraDone || (melloStillNeedsToAct(room) && !info.melloDone)) return;
   await runTransaction(ref(db, `rooms/${code}`), (r) => {
     if (!r || r.phase !== 'information') return r;
     const i = obj(r.info);
-    if (!i.lDone || !i.kiraDone) return r;
+    if (!i.lDone || !i.kiraDone || (melloStillNeedsToAct(r) && !i.melloDone)) return r;
     r.round = (r.round || 1) + 1;
     r.phase = 'deaths';
     r.mission = { step: null };
     r.voting = { resolved: false };
-    r.info = { lDone: false, kiraDone: false, swappedThisPhase: false };
+    r.info = { lDone: false, kiraDone: false, melloDone: false, swappedThisPhase: false };
     return r;
   });
 }
@@ -1359,6 +1419,52 @@ async function finishKiraTeamTurn(code) {
     if (!room || room.phase !== 'information' || room.info.kiraDone) return room;
     room.lastInfoPhaseSwapped = !!room.info.swappedThisPhase;
     room.info.kiraDone = true;
+    return room;
+  });
+}
+
+/* ---------------- MELLO: STEAL THE DEATH NOTE ---------------- */
+
+async function submitStealAttempt(code, targetId) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'information' || room.info.melloDone) return room;
+    const melloId = room.melloPlayerId;
+    if (!melloId || myPlayerId !== melloId) return room;
+    const mello = room.secrets[melloId];
+    if (!mello || !mello.alive) return room;
+    const target = room.secrets[targetId];
+    if (!target || !target.alive || targetId === melloId) return room;
+
+    // One attempt per Information Phase — success or failure both end Mello's
+    // turn for this round, same as Kira's team finishing theirs.
+    room.info.melloDone = true;
+
+    if (targetId === room.kiraPlayerId) {
+      const kiraId = room.kiraPlayerId;
+      room.secrets[melloId].role = 'Kira';
+      room.secrets[kiraId].role = 'Mello';
+      room.secrets[kiraId].wrongStealCount = 0;
+      room.kiraPlayerId = melloId;
+      room.melloPlayerId = kiraId;
+      room.info.stealResult = { success: true, thief: melloId, victim: kiraId };
+    } else {
+      mello.wrongStealCount = (mello.wrongStealCount || 0) + 1;
+      if (mello.wrongStealCount >= 2) {
+        mello.alive = false;
+        room.pendingDeaths = obj(room.pendingDeaths);
+        room.pendingDeaths[melloId] = true;
+      }
+      room.info.stealResult = { success: false };
+    }
+    return room;
+  });
+}
+
+async function finishMelloTurn(code) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'information' || room.info.melloDone) return room;
+    if (myPlayerId !== room.melloPlayerId) return room;
+    room.info.melloDone = true;
     return room;
   });
 }

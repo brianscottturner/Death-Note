@@ -147,15 +147,29 @@ Each expansion role has three settings, not just an on/off switch:
   identities are revealed). Once someone is recruited, they become a
   normal Kira Follower for the rest of the game (chat, Death Note swap,
   everything). Only one of this expansion's Kira-replacing roles can be
-  active per game; only X-Kira is implemented so far.
+  active per game.
+- **Special Provisions for Kira — Mello**: a third, neutral role — not
+  L's team, not Kira's. Mello wins alone, by stealing the Death Note and
+  becoming the new Kira. During each Information Phase, Mello can guess
+  which player currently holds it; guess right, and roles swap — Mello
+  becomes Kira, and the old Kira becomes the new Mello, with a fresh set
+  of attempts of their own (this can go back and forth more than once).
+  The old Kira's Follower stays put and simply keeps following whoever
+  the *current* Kira is. Mello gets **2 attempts total, for as long as
+  the role is theirs** — fail both, and they're eliminated; get
+  arrested, and they're eliminated too (a neutral has no round to "sit
+  out"). Combines freely with Watari or X-Kira. This expansion will
+  eventually add one more role; only X-Kira and Mello are implemented so
+  far.
 
 ## Notes
 
 - **Players**: 7–10. Always exactly 1 L, 1 Kira, 1 Kira Follower, with the
   rest as Investigators (e.g. a 7-player game is 1/1/1/4). Add 1 Watari
-  if the Task Force expansion is enabled. If X-Kira is enabled instead of
-  normal Kira, there's no Follower until/unless one gets recruited
-  mid-game, so the initial split is 1 L, 1 X-Kira, and everyone else an
+  if the Task Force expansion is enabled, and 1 Mello if enabled. If
+  X-Kira is enabled instead of normal Kira, there's no Follower
+  until/unless one gets recruited mid-game, so the initial split is 1 L,
+  1 X-Kira, and everyone else an
   Investigator (plus Watari, if that's also enabled).
 - **Voting**: majority is a strict majority of alive players who voted
   (more than half). Ties or no majority = nothing happens.
