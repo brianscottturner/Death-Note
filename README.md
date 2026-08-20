@@ -58,12 +58,14 @@ fix ships.
 Each round has four phases, in order:
 
 1. **Deaths** — reveals anyone killed during the previous Information Phase.
-2. **Missions** — the app randomly picks a Leading Investigator, who
-   selects teammates for the mission (team size comes from your physical
-   mission cards, typically 3–8). Enter the mission's pass/fail result
-   (determined by the physical cards) to award the point. Afterward, the
-   Leading Investigator chooses whether the team shares first names, last
-   names, or both — the app then pairs everyone on the mission up (each
+2. **Missions** — the app randomly picks a Leading Investigator. The
+   physical mission card for the round — not the leader — dictates team
+   size (typically 3–8), difficulty, and which names get shared; the
+   leader's actual choice is only who fills the team. Enter the mission's
+   pass/fail result (determined by the physical cards) to award the
+   point, then enter the mission card's name-sharing setting (first
+   names, last names, or both) — the app then pairs everyone on the
+   mission up (each
    person learns exactly one teammate's name, and has their own name
    learned by exactly one teammate), automatically avoiding pairing
    someone with a name they already know from an earlier mission whenever
@@ -107,7 +109,8 @@ Each round has four phases, in order:
 - **Voting**: majority is a strict majority of alive players who voted
   (more than half). Ties or no majority = nothing happens.
 - **Mission team size**: not validated by the app — it's whatever your
-  physical mission card says, the app just lets the leader pick names.
+  physical mission card says, the app just lets the leader pick which
+  players fill the team.
 - **Death reveal**: revealing a death does not reveal the dead player's
   secret role, only that they died.
 - **Name-sharing pairing**: the app randomizes single-cycle arrangements
