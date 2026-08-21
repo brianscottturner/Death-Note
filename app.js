@@ -8,6 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
+const APP_VERSION = 13;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -18,6 +19,7 @@ function shuffle(arr) {
   return a;
 }
 function el(id) { return document.getElementById(id); }
+el('app-version').textContent = 'v' + APP_VERSION;
 
 // Assigns each team member to learn one other member's name (a derangement:
 // nobody learns their own name, everybody learns from exactly one person and

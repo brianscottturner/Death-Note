@@ -51,7 +51,12 @@ to be on the same machine/network.
 query string. GitHub Pages doesn't reliably bust browser caches on its
 own, so bump that version number on any deploy that changes `app.js` or
 `style.css` — otherwise some phones may keep running stale JS after a
-fix ships.
+fix ships. The landing screen shows the running `APP_VERSION` (set near
+the top of `app.js`) in small text below the Join Game button — when a
+bug report only affects some players' phones, checking that number is the
+fastest way to tell a stale-cache issue apart from a real one. Bump
+`APP_VERSION` in `app.js` together with the `?v=N` numbers in `index.html`
+so the on-screen label always matches what's actually being served.
 
 ## Round structure
 
