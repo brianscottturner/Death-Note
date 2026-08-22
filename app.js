@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 16;
+const APP_VERSION = 17;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -494,7 +494,7 @@ function renderReveal(room) {
     roleDesc = "You know who Kira is, and you're utterly devoted to them. You traded half your remaining lifespan for Shinigami Eyes — once for the whole game, you can look at any other player and instantly learn either their first or last name, no mission needed. Using it costs you the rest of that Information Phase.";
   } else if (mySecret.role === 'KiraFollower') {
     roleName = "You are KIRA'S FOLLOWER";
-    roleDesc = "You know who Kira is. Help them strategize. If needed, you can swap the Death Note with Kira to become Kira yourself.";
+    roleDesc = "You know who Kira is. Help them strategize during the Information Phase over chat. Only Kira can write in the Death Note or swap it with you — if they choose to swap, you become Kira yourself.";
   } else if (mySecret.role === 'L' && room.nActive) {
     roleName = 'You are N';
     const cap = room.nClearCap || 2;
@@ -1329,6 +1329,7 @@ function renderInformationPhase(room) {
   } else if (amKiraTeam) {
     const kira = players[room.kiraPlayerId];
     const follower = room.followerPlayerId ? players[room.followerPlayerId] : null;
+    const amActingKira = myPlayerId === room.kiraPlayerId;
     const stealResult = info.stealResult;
     if (stealResult && stealResult.success && stealResult.thief === myPlayerId) {
       html += `<p class="hint"><strong>You successfully stole the Death Note. You are now Kira.</strong></p>`;
@@ -1351,7 +1352,7 @@ function renderInformationPhase(room) {
       html += `<p class="hint">Using it cost you the rest of this Information Phase — waiting for Kira to finish...</p>`;
     } else if (info.kiraDone) {
       html += `<p class="hint">Done. Waiting for ${room.nActive ? 'N' : 'L'} to finish...</p>`;
-    } else {
+    } else if (amActingKira) {
       const canSwap = !!follower && !room.lastInfoPhaseSwapped && !info.swappedThisPhase;
       if (!follower) { /* nothing to swap with yet */ }
       else if (info.swappedThisPhase) html += `<p class="hint">The Death Note was swapped this phase.</p>`;
@@ -1378,6 +1379,8 @@ function renderInformationPhase(room) {
         }
       }
       html += `<hr><button id="btn-info-finish" class="primary">Finished — Continue</button>`;
+    } else {
+      html += `<p class="hint">Only Kira can write a name in the Death Note, swap it, or end this phase — chat with them below.</p>`;
 
       if (amMisa && !room.misaEyesUsed) {
         const eyesTargets = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && id !== myPlayerId && id !== room.kiraPlayerId);
@@ -1597,6 +1600,8 @@ async function submitAccusation(code, targetId) {
 async function swapDeathNote(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || room.phase !== 'information' || room.info.kiraDone) return room;
+    // Only Kira (the Note's current holder) can initiate a swap — not the Follower.
+    if (myPlayerId !== room.kiraPlayerId) return room;
     if (room.lastInfoPhaseSwapped || room.info.swappedThisPhase) return room;
     if (!room.followerPlayerId) return room;
     const kId = room.kiraPlayerId, fId = room.followerPlayerId;
@@ -1646,6 +1651,8 @@ async function submitKillGuess(code, targetId, first, last) {
   }
   const result = await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || room.phase !== 'information' || room.info.kiraDone) return room;
+    // Only Kira (the Note's current holder) can write a name in it — not the Follower.
+    if (myPlayerId !== room.kiraPlayerId) return room;
     if ((room.info.killsThisPhase || 0) >= 2) return room;
     const target = room.secrets[targetId];
     if (!target || !target.alive || target.immune) return room;

@@ -97,17 +97,20 @@ Each round has four phases, in order:
    acting this round) is shown 4 suspects, one of whom is truly Kira, and
    taps Done when finished reviewing them. Meanwhile Kira and the Follower have **2 minutes** to strategize — a
    countdown is visible to everyone in the phase — and once it runs out
-   their turn ends automatically (same as tapping "Finished") so a slow
-   Kira team can't stall the game. They may swap the Death Note (not
-   twice in a row), and may make kill guesses
-   (guessing a target's secret first + last name) up to **2 successful
-   kills per Information Phase** — the form locks once that cap is hit,
-   though wrong guesses don't count against it. Two wrong guesses on the
-   same player makes them immune for the rest of the game. Kira and the
-   Follower also know each other's identity from the very start (shown on
-   the role reveal screen), and get a private text chat, visible only on
-   their two devices, that persists for the whole game rather than
-   resetting each phase.
+   their turn ends automatically (same as Kira tapping "Finished") so a
+   slow Kira team can't stall the game. Only Kira — whoever currently
+   holds the Death Note — can act: swap the Note with the Follower (not
+   twice in a row), make kill guesses (guessing a target's secret first +
+   last name) up to **2 successful kills per Information Phase** — the
+   form locks once that cap is hit, though wrong guesses don't count
+   against it — or end the team's turn early. Two wrong guesses on the
+   same player makes them immune for the rest of the game. The Follower
+   can't do any of that; their role during this phase is to chat and
+   strategize, not to act directly — if Kira swaps the Note with them,
+   *then* they can. Kira and the Follower know each other's identity from
+   the very start (shown on the role reveal screen), and get a private
+   text chat, visible only on their two devices, that persists for the
+   whole game rather than resetting each phase.
 
 ## Win conditions
 
