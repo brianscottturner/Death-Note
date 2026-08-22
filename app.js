@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 15;
+const APP_VERSION = 16;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -588,6 +588,7 @@ function updateHeader(room) {
 function renderRound(room) {
   updateHeader(room);
   initNotesPanel(room);
+  updateNotesLockState(room);
   if (room.endgame && room.endgame.active && !room.endgame.resolved) return renderEndgame(room);
   if (room.phase === 'deaths') return renderDeathsPhase(room);
   if (room.phase === 'mission') return renderMissionPhase(room);
@@ -616,6 +617,15 @@ function initNotesPanel(room) {
     clearTimeout(notesSaveTimer);
     notesSaveTimer = setTimeout(() => saveNotes(myRoomCode, myPlayerId, textarea.value), 600);
   });
+}
+
+function updateNotesLockState(room) {
+  const info = obj(room.info);
+  const locked = room.phase === 'information' && !!obj(info.sittingOutIds)[myPlayerId];
+  const textarea = el('notes-textarea');
+  const hint = el('notes-locked-hint');
+  if (textarea) textarea.disabled = locked;
+  if (hint) hint.classList.toggle('hidden', !locked);
 }
 
 async function saveNotes(code, playerId, text) {
@@ -1158,12 +1168,22 @@ async function continueFromVotingResult(code) {
       room.xKiraRecruitOffered = true;
     }
     room.phase = 'information';
+    // Anyone arrested last round sits out this entire Information Phase --
+    // no acting, no notes -- across every role, not just L. Consumed here
+    // (cleared right away) so the sit-out only ever covers one phase.
+    const secrets = obj(room.secrets);
+    const sittingOutIds = {};
+    Object.keys(secrets).forEach(id => {
+      if (secrets[id].skipNextInfo) {
+        sittingOutIds[id] = true;
+        secrets[id].skipNextInfo = false;
+      }
+    });
     const l = room.secrets[room.lPlayerId];
-    const lNeedsToAct = !!(l && l.alive && !l.skipNextInfo);
-    if (l && l.skipNextInfo) l.skipNextInfo = false;
+    const lNeedsToAct = !!(l && l.alive && !sittingOutIds[room.lPlayerId]);
     const mello = room.melloPlayerId ? room.secrets[room.melloPlayerId] : null;
-    const melloNeedsToAct = !!(mello && mello.alive);
-    room.info = { lDone: !lNeedsToAct, kiraDone: false, melloDone: !melloNeedsToAct, swappedThisPhase: false, kiraDeadline: Date.now() + KIRA_TURN_MS };
+    const melloNeedsToAct = !!(mello && mello.alive && !sittingOutIds[room.melloPlayerId]);
+    room.info = { lDone: !lNeedsToAct, kiraDone: false, melloDone: !melloNeedsToAct, swappedThisPhase: false, kiraDeadline: Date.now() + KIRA_TURN_MS, sittingOutIds };
     return room;
   });
 }
@@ -1233,6 +1253,7 @@ function renderInformationPhase(room) {
   const amMello = myPlayerId === room.melloPlayerId && secrets[room.melloPlayerId] && secrets[room.melloPlayerId].alive;
   const amMisa = !!room.misaActive && myPlayerId === room.followerPlayerId;
   const misaLockedThisRound = amMisa && !!info.misaUsedThisPhase;
+  const amSittingOut = !!obj(info.sittingOutIds)[myPlayerId];
 
   // Preserve any in-progress kill-guess form selections and chat input across
   // re-renders, since this panel is viewed by two separate devices (Kira +
@@ -1316,7 +1337,10 @@ function renderInformationPhase(room) {
       <p class="hint">${follower ? 'Share what you learned during the Mission Phase and strategize.' : "You're operating alone this round."}</p>
       <div id="info-timer" class="hint"></div><hr>`;
 
-    if (misaLockedThisRound) {
+    if (amSittingOut) {
+      html += `<p class="hint"><strong>You're sitting out this Information Phase.</strong></p>
+        <p class="hint">You were arrested last round — waiting for the round to finish...</p>`;
+    } else if (misaLockedThisRound) {
       const eyesResult = info.misaEyesResult;
       html += `<p class="hint"><strong>You used your Shinigami Eyes this round.</strong></p>`;
       if (eyesResult && players[eyesResult.targetId]) {
@@ -1373,7 +1397,7 @@ function renderInformationPhase(room) {
       }
     }
 
-    if (follower && !misaLockedThisRound) {
+    if (follower && !misaLockedThisRound && !amSittingOut) {
       html += `<hr><p><strong>Chat with your ${myPlayerId === room.kiraPlayerId ? 'Follower' : 'Kira'}</strong></p>
         <div class="chat-log" id="kira-chat-log">${renderChatLog(obj(room.kiraChat), players)}</div>
         <div class="chat-input-row">

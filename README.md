@@ -27,7 +27,9 @@ strategize panel). Every player also has a private "My Notes" scratchpad
 (collapsed by default, tap to open) visible below the phase content at
 all times — autosaves as they type, persists for the whole game, and
 isn't shared with anyone else, so investigators have somewhere to track
-suspicions even during phases where they're not the one acting.
+suspicions even during phases where they're not the one acting. The one
+exception: a player sitting out an Information Phase after being
+arrested can't write notes during that phase either — see Voting below.
 
 **Security note**: rooms are locked to whoever knows the room code (not
 publicly listable/enumerable), but there's no true per-field secrecy
@@ -78,10 +80,17 @@ Each round has four phases, in order:
    (who they learned from, and who learned from them) — never the whole
    mission's mapping.
 3. **Voting** — every alive player secretly votes to arrest a player or
-   skip. A strict majority for one player arrests them (they sit out the
-   next Mission Phase and next Information Phase, and must reveal their
-   secret name). Arresting Kira ends the round immediately and moves to
-   the final guess.
+   skip. A strict majority for one player arrests them, and must reveal
+   their secret name. Since Information Phase is the very next phase
+   after Voting, "sitting out the next Information Phase" means *this*
+   round's — arrested players lose all access to it for that one phase:
+   no acting (no L/N suspects, no Kira-team panel, no Mello steal
+   attempt), and even private notes are locked (read-only becomes
+   unavailable entirely) until the phase ends. They also can't be picked
+   for the *following* round's Mission team — the leader won't even see
+   them as an option. Both restrictions are one-time; normal access
+   returns immediately after. Arresting Kira ends the round immediately
+   and moves to the final guess instead of a normal Information Phase.
 4. **Information** — L (if not sitting out) and Kira's team act **at the
    same time**, each on their own device, rather than waiting on each
    other — the round only advances once both sides are finished. L (if
