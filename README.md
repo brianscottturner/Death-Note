@@ -134,8 +134,7 @@ Each expansion role has three settings, not just an on/off switch:
   notice in the next Deaths Phase: "Watari has died... All data
   deletion." (It's shown to everyone rather than just the Investigators
   so that L/Kira/Follower not reacting to it doesn't itself look
-  suspicious.) The Task Force expansion will eventually add one more
-  role; Watari and NPA Chief are implemented so far.
+  suspicious.)
 - **Task Force — NPA Chief**: a normal Investigator on L/N's team, bound
   to their post — they can **never vote to skip**, always naming someone.
   If a vote ever fails to reach a majority, the Chief may force an
@@ -147,6 +146,23 @@ Each expansion role has three settings, not just an on/off switch:
   turn a wasted round into action. A forced arrest carries every normal
   consequence — sit-out, the Kira endgame trigger, Mello's elimination —
   identically to a majority arrest.
+- **Task Force — Misa**: replaces the Kira Follower. Knows Kira's
+  identity from the start and plays like a normal Follower (chat, Death
+  Note swap, everything) — with one added power: **Shinigami Eyes**,
+  usable **once for the entire game**. Misa picks any other player
+  (including L/N or Watari — nothing is off-limits) and picks either
+  their first name or their last name; the app reveals it to her
+  instantly, no mission needed. Using it costs her **the rest of that
+  Information Phase** — no chat, no kill guess, no Death Note swap for
+  her that round, though Kira can still act and end the team's turn
+  normally. It's genuinely a one-time trade: once spent, it's gone for
+  the rest of the game, even across later Death Note swaps. Structurally
+  Misa *is* the Follower (same seat as any Kira Follower), so she
+  requires an actual Follower to exist — she has no effect in a game
+  where X-Kira ends up active, since X-Kira starts without one.
+
+This expansion's three roles — Watari, NPA Chief, and Misa — are all
+implemented.
 - **Special Provisions for Kira — X-Kira**: replaces the normal Kira
   role. Plays exactly like Kira (same kill guesses, same win conditions)
   but starts with **no Follower** — X-Kira is alone. Once L's team
@@ -193,22 +209,8 @@ Each expansion role has three settings, not just an on/off switch:
   recruit-immunity for X-Kira, same "sit out a round" arrest, same
   endgame guess) — only the Information Phase and some display text
   change. Combines freely with the rest of this expansion.
-- **Special Provisions for Kira — Misa**: replaces the Kira Follower.
-  Knows Kira's identity from the start and plays like a normal Follower
-  (chat, Death Note swap, everything) — with one added power:
-  **Shinigami Eyes**, usable **once for the entire game**. Misa picks
-  any other player (including L/N or Watari — nothing is off-limits) and
-  picks either their first name or their last name; the app reveals it
-  to her instantly, no mission needed. Using it costs her **the rest of
-  that Information Phase** — no chat, no kill guess, no Death Note swap
-  for her that round, though Kira can still act and end the team's turn
-  normally. It's genuinely a one-time trade: once spent, it's gone for
-  the rest of the game, even across later Death Note swaps. Structurally
-  Misa *is* the Follower (same seat as any Kira Follower), so she
-  requires an actual Follower to exist — she has no effect in a game
-  where X-Kira ends up active, since X-Kira starts without one.
 
-This expansion's four roles — X-Kira, Mello, N, and Misa — are all
+This expansion's three roles — X-Kira, Mello, and N — are all
 implemented.
 
 ## Notes
@@ -216,14 +218,14 @@ implemented.
 - **Players**: 7–10. Always exactly 1 L, 1 Kira, 1 Kira Follower, with the
   rest as Investigators (e.g. a 7-player game is 1/1/1/4). Add 1 Watari
   and/or 1 NPA Chief if the Task Force expansion is enabled, and 1 Mello
-  if enabled. If
+  if enabled. If Misa is enabled (and X-Kira isn't), she simply takes
+  the Kira Follower slot. If
   X-Kira is enabled instead of normal Kira, there's no Follower
   until/unless one gets recruited mid-game, so the initial split is 1 L,
   1 X-Kira, and everyone else an Investigator (plus Watari/Mello, if
   those are also enabled) — Misa has no effect in this case, since she
   needs a Follower to replace. If N is enabled, N simply takes the L
-  slot — everything else about the split is unchanged. If Misa is
-  enabled (and X-Kira isn't), she simply takes the Kira Follower slot.
+  slot — everything else about the split is unchanged.
 - **Voting**: majority is a strict majority of alive players who voted
   (more than half). Ties or no majority = nothing happens.
 - **Mission team size**: not validated by the app — it's whatever your

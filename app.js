@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 14;
+const APP_VERSION = 15;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -348,14 +348,14 @@ function renderLobby(room) {
       <p class="hint" style="margin-top:10px;">Task Force expansion</p>`;
     html += roleSettingRow('watari', watariSetting, 'Watari', "A normal Investigator who knows L's identity from the start (and L knows Watari too). Watari is never one of L's 4 suspects.");
     html += roleSettingRow('npa', npaSetting, 'NPA Chief', "On L/N's team. Can never vote to skip — always names someone. If a vote fails to reach majority, the Chief may force an arrest anyway, choosing from whoever led the vote (or let it go).");
+    html += roleSettingRow('misa', misaSetting, 'Misa', "Replaces the Kira Follower. Knows Kira's identity like any Follower, but has a one-time Shinigami Eyes power: instantly learn half of any player's real name, no mission needed — using it costs her the rest of that Information Phase. Requires a Follower to exist, so it has no effect in a game where X-Kira ends up active.");
     html += `<p class="hint" style="margin-top:10px;">Special Provisions for Kira</p>`;
     html += roleSettingRow('xKira', xKiraSetting, 'X-Kira', 'Replaces Kira. Starts with no Follower — once L\'s team reaches 3 points, X-Kira gets one chance to recruit one during a Voting Phase.');
-    html += roleSettingRow('misa', misaSetting, 'Misa', "Replaces the Kira Follower. Knows Kira's identity like any Follower, but has a one-time Shinigami Eyes power: instantly learn half of any player's real name, no mission needed — using it costs her the rest of that Information Phase. Requires a Follower to exist, so it has no effect in a game where X-Kira ends up active.");
     html += roleSettingRow('mello', melloSetting, 'Mello', "A neutral third team of one. Can attempt to steal the Death Note from Kira during the Information Phase — succeed, and Mello becomes the new Kira while the old Kira becomes the new Mello. Two failed attempts (by whoever currently holds the role), or an arrest, means elimination.");
     html += roleSettingRow('n', nSetting, 'N', "Replaces L. Instead of 4 suspects, N accuses one player per Information Phase — an innocent gets cleared for good, Mello gets identified, but Kira or the Follower gives nothing away. Limited Definitive Clears for the whole game (2 with 7-8 players, 3 with 9-10).");
     html += `</div>`;
   } else if (watariSetting === 'on' || xKiraSetting === 'on' || melloSetting === 'on' || nSetting === 'on' || npaSetting === 'on' || misaSetting === 'on') {
-    const active = [watariSetting === 'on' && 'Watari (Task Force)', npaSetting === 'on' && 'NPA Chief (Task Force)', xKiraSetting === 'on' && 'X-Kira (Special Provisions for Kira)', misaSetting === 'on' && 'Misa (Special Provisions for Kira)', melloSetting === 'on' && 'Mello (Special Provisions for Kira)', nSetting === 'on' && 'N (Special Provisions for Kira)'].filter(Boolean);
+    const active = [watariSetting === 'on' && 'Watari (Task Force)', npaSetting === 'on' && 'NPA Chief (Task Force)', misaSetting === 'on' && 'Misa (Task Force)', xKiraSetting === 'on' && 'X-Kira (Special Provisions for Kira)', melloSetting === 'on' && 'Mello (Special Provisions for Kira)', nSetting === 'on' && 'N (Special Provisions for Kira)'].filter(Boolean);
     html += `<p class="hint">Expansion${active.length > 1 ? 's' : ''} active: ${active.join(', ')}</p>`;
   }
 
