@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 13;
+const APP_VERSION = 14;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -189,7 +189,7 @@ async function createRoom(name, customCode) {
     round: 0, phase: null,
     lScore: 0, kiraScore: 0,
     lastInfoPhaseSwapped: false,
-    settings: { watari: 'off', xKira: 'off', mello: 'off', n: 'off', npa: 'off' },
+    settings: { watari: 'off', xKira: 'off', mello: 'off', n: 'off', npa: 'off', misa: 'off' },
     mission: { step: null },
     voting: { resolved: false },
     info: { lDone: false, kiraDone: false, swappedThisPhase: false },
@@ -317,7 +317,8 @@ function renderLobby(room) {
   const melloSetting = (room.settings && room.settings.mello) || 'off';
   const nSetting = (room.settings && room.settings.n) || 'off';
   const npaSetting = (room.settings && room.settings.npa) || 'off';
-  const configuredCount = (watariSetting !== 'off' ? 1 : 0) + (xKiraSetting !== 'off' ? 1 : 0) + (melloSetting !== 'off' ? 1 : 0) + (nSetting !== 'off' ? 1 : 0) + (npaSetting !== 'off' ? 1 : 0);
+  const misaSetting = (room.settings && room.settings.misa) || 'off';
+  const configuredCount = (watariSetting !== 'off' ? 1 : 0) + (xKiraSetting !== 'off' ? 1 : 0) + (melloSetting !== 'off' ? 1 : 0) + (nSetting !== 'off' ? 1 : 0) + (npaSetting !== 'off' ? 1 : 0) + (misaSetting !== 'off' ? 1 : 0);
 
   let html = `<h1 class="title">DEATH NOTE<br><span class="subtitle">Kira's Game</span></h1>
     <div class="card">
@@ -349,11 +350,12 @@ function renderLobby(room) {
     html += roleSettingRow('npa', npaSetting, 'NPA Chief', "On L/N's team. Can never vote to skip — always names someone. If a vote fails to reach majority, the Chief may force an arrest anyway, choosing from whoever led the vote (or let it go).");
     html += `<p class="hint" style="margin-top:10px;">Special Provisions for Kira</p>`;
     html += roleSettingRow('xKira', xKiraSetting, 'X-Kira', 'Replaces Kira. Starts with no Follower — once L\'s team reaches 3 points, X-Kira gets one chance to recruit one during a Voting Phase.');
+    html += roleSettingRow('misa', misaSetting, 'Misa', "Replaces the Kira Follower. Knows Kira's identity like any Follower, but has a one-time Shinigami Eyes power: instantly learn half of any player's real name, no mission needed — using it costs her the rest of that Information Phase. Requires a Follower to exist, so it has no effect in a game where X-Kira ends up active.");
     html += roleSettingRow('mello', melloSetting, 'Mello', "A neutral third team of one. Can attempt to steal the Death Note from Kira during the Information Phase — succeed, and Mello becomes the new Kira while the old Kira becomes the new Mello. Two failed attempts (by whoever currently holds the role), or an arrest, means elimination.");
     html += roleSettingRow('n', nSetting, 'N', "Replaces L. Instead of 4 suspects, N accuses one player per Information Phase — an innocent gets cleared for good, Mello gets identified, but Kira or the Follower gives nothing away. Limited Definitive Clears for the whole game (2 with 7-8 players, 3 with 9-10).");
     html += `</div>`;
-  } else if (watariSetting === 'on' || xKiraSetting === 'on' || melloSetting === 'on' || nSetting === 'on' || npaSetting === 'on') {
-    const active = [watariSetting === 'on' && 'Watari (Task Force)', npaSetting === 'on' && 'NPA Chief (Task Force)', xKiraSetting === 'on' && 'X-Kira (Special Provisions for Kira)', melloSetting === 'on' && 'Mello (Special Provisions for Kira)', nSetting === 'on' && 'N (Special Provisions for Kira)'].filter(Boolean);
+  } else if (watariSetting === 'on' || xKiraSetting === 'on' || melloSetting === 'on' || nSetting === 'on' || npaSetting === 'on' || misaSetting === 'on') {
+    const active = [watariSetting === 'on' && 'Watari (Task Force)', npaSetting === 'on' && 'NPA Chief (Task Force)', xKiraSetting === 'on' && 'X-Kira (Special Provisions for Kira)', misaSetting === 'on' && 'Misa (Special Provisions for Kira)', melloSetting === 'on' && 'Mello (Special Provisions for Kira)', nSetting === 'on' && 'N (Special Provisions for Kira)'].filter(Boolean);
     html += `<p class="hint">Expansion${active.length > 1 ? 's' : ''} active: ${active.join(', ')}</p>`;
   }
 
@@ -429,6 +431,7 @@ async function startGame(code) {
     const melloEnabled = resolveRoleSetting(room.settings && room.settings.mello);
     const nEnabled = resolveRoleSetting(room.settings && room.settings.n);
     const npaEnabled = resolveRoleSetting(room.settings && room.settings.npa);
+    const misaEnabled = resolveRoleSetting(room.settings && room.settings.misa);
     const fixedRoles = ['L', 'Kira']
       .concat(xKiraEnabled ? [] : ['KiraFollower'])
       .concat(watariEnabled ? ['Watari'] : [])
@@ -457,6 +460,12 @@ async function startGame(code) {
     // endgame guess all keep working unchanged — only display text branches on this.
     room.nActive = nEnabled;
     room.nClearCap = count <= 8 ? 2 : 3;
+    // Misa reuses the 'KiraFollower' role slot the same way N/X-Kira reuse 'L'/'Kira',
+    // so partner reveal, chat, swap, N's silent-accusation check, and X-Kira's
+    // recruit-follower-exists check all keep working unchanged. She requires an
+    // actual Follower to be dealt, so she's never active in the same game as X-Kira
+    // (which starts with no Follower at all).
+    room.misaActive = !xKiraEnabled && misaEnabled;
     // X-Kira starts without a Follower — one is only assigned if/when recruited mid-game.
     if (!xKiraEnabled) room.followerPlayerId = playerIds.find(id => secrets[id].role === 'KiraFollower');
     if (watariEnabled) room.watariPlayerId = playerIds.find(id => secrets[id].role === 'Watari');
@@ -480,6 +489,9 @@ function renderReveal(room) {
   } else if (mySecret.role === 'Kira') {
     roleName = 'You are KIRA';
     roleDesc = "You lead the evil team. Coordinate with your Follower during the Information Phase. Kill investigators by correctly guessing their secret names. Avoid being arrested.";
+  } else if (mySecret.role === 'KiraFollower' && room.misaActive) {
+    roleName = 'You are MISA';
+    roleDesc = "You know who Kira is, and you're utterly devoted to them. You traded half your remaining lifespan for Shinigami Eyes — once for the whole game, you can look at any other player and instantly learn either their first or last name, no mission needed. Using it costs you the rest of that Information Phase.";
   } else if (mySecret.role === 'KiraFollower') {
     roleName = "You are KIRA'S FOLLOWER";
     roleDesc = "You know who Kira is. Help them strategize. If needed, you can swap the Death Note with Kira to become Kira yourself.";
@@ -1219,6 +1231,8 @@ function renderInformationPhase(room) {
   const amL = myPlayerId === room.lPlayerId;
   const amKiraTeam = myPlayerId === room.kiraPlayerId || myPlayerId === room.followerPlayerId;
   const amMello = myPlayerId === room.melloPlayerId && secrets[room.melloPlayerId] && secrets[room.melloPlayerId].alive;
+  const amMisa = !!room.misaActive && myPlayerId === room.followerPlayerId;
+  const misaLockedThisRound = amMisa && !!info.misaUsedThisPhase;
 
   // Preserve any in-progress kill-guess form selections and chat input across
   // re-renders, since this panel is viewed by two separate devices (Kira +
@@ -1231,6 +1245,8 @@ function renderInformationPhase(room) {
   const prevChatFocused = document.activeElement && document.activeElement.id === 'kira-chat-input';
   const prevStealTarget = el('steal-target') ? el('steal-target').value : null;
   const prevAccuseTarget = el('accuse-target') ? el('accuse-target').value : null;
+  const prevEyesTarget = el('eyes-target') ? el('eyes-target').value : null;
+  const prevEyesPart = el('eyes-part') ? el('eyes-part').value : null;
 
   let html = `<h2>Information Phase</h2><div class="card pass-card">`;
 
@@ -1300,7 +1316,16 @@ function renderInformationPhase(room) {
       <p class="hint">${follower ? 'Share what you learned during the Mission Phase and strategize.' : "You're operating alone this round."}</p>
       <div id="info-timer" class="hint"></div><hr>`;
 
-    if (info.kiraDone) {
+    if (misaLockedThisRound) {
+      const eyesResult = info.misaEyesResult;
+      html += `<p class="hint"><strong>You used your Shinigami Eyes this round.</strong></p>`;
+      if (eyesResult && players[eyesResult.targetId]) {
+        const t = players[eyesResult.targetId];
+        const partLabel = eyesResult.part === 'first' ? 'first name' : 'last name';
+        html += `<p><strong>${t.label} — ${esc(t.name)}'s ${partLabel}: ${esc(eyesResult.value)}</strong></p>`;
+      }
+      html += `<p class="hint">Using it cost you the rest of this Information Phase — waiting for Kira to finish...</p>`;
+    } else if (info.kiraDone) {
       html += `<p class="hint">Done. Waiting for ${room.nActive ? 'N' : 'L'} to finish...</p>`;
     } else {
       const canSwap = !!follower && !room.lastInfoPhaseSwapped && !info.swappedThisPhase;
@@ -1329,9 +1354,26 @@ function renderInformationPhase(room) {
         }
       }
       html += `<hr><button id="btn-info-finish" class="primary">Finished — Continue</button>`;
+
+      if (amMisa && !room.misaEyesUsed) {
+        const eyesTargets = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && id !== myPlayerId && id !== room.kiraPlayerId);
+        html += `<hr><div class="card">
+          <h3>👁 Shinigami Eyes (one-time)</h3>
+          <p class="hint">Trade the rest of this turn to instantly learn part of someone's real name — no mission needed.</p>`;
+        if (eyesTargets.length === 0) {
+          html += `<p class="hint">No valid targets remain.</p>`;
+        } else {
+          html += `<label>Look at</label>
+            <select id="eyes-target">${eyesTargets.map(id => `<option value="${id}">${players[id].label} — ${esc(players[id].name)}</option>`).join('')}</select>
+            <label>Which part of their name?</label>
+            <select id="eyes-part"><option value="first">First name</option><option value="last">Last name</option></select>
+            <button id="btn-eyes-submit" class="danger">Use Shinigami Eyes</button>`;
+        }
+        html += `</div>`;
+      }
     }
 
-    if (follower) {
+    if (follower && !misaLockedThisRound) {
       html += `<hr><p><strong>Chat with your ${myPlayerId === room.kiraPlayerId ? 'Follower' : 'Kira'}</strong></p>
         <div class="chat-log" id="kira-chat-log">${renderChatLog(obj(room.kiraChat), players)}</div>
         <div class="chat-input-row">
@@ -1424,7 +1466,16 @@ function renderInformationPhase(room) {
         const msg = await submitKillGuess(myRoomCode, targetId, first, last);
         showToast(msg);
       });
-      el('btn-info-finish').addEventListener('click', () => finishKiraTeamTurn(myRoomCode));
+      const finishBtn = el('btn-info-finish');
+      if (finishBtn) finishBtn.addEventListener('click', () => finishKiraTeamTurn(myRoomCode));
+
+      const eyesTargetSel = el('eyes-target'), eyesPartSel = el('eyes-part');
+      if (eyesTargetSel && prevEyesTarget && [...eyesTargetSel.options].some(o => o.value === prevEyesTarget)) eyesTargetSel.value = prevEyesTarget;
+      if (eyesPartSel && prevEyesPart) eyesPartSel.value = prevEyesPart;
+      const eyesBtn = el('btn-eyes-submit');
+      if (eyesBtn) eyesBtn.addEventListener('click', () => {
+        submitMisaEyes(myRoomCode, el('eyes-target').value, el('eyes-part').value);
+      });
     }
   }
   if (amMello && !info.melloDone) {
@@ -1530,6 +1581,27 @@ async function swapDeathNote(code) {
     room.kiraPlayerId = fId;
     room.followerPlayerId = kId;
     room.info.swappedThisPhase = true;
+    return room;
+  });
+}
+
+// Misa's Shinigami Eyes — one-time for the whole game (room.misaEyesUsed is
+// permanent, like xKiraRecruitOffered), but info.misaUsedThisPhase is scoped
+// to room.info so it resets automatically each round like every other
+// per-phase flag, unlocking her normal panel again next Information Phase
+// (the power itself stays spent).
+async function submitMisaEyes(code, targetId, part) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'information' || room.info.kiraDone) return room;
+    if (!room.misaActive || myPlayerId !== room.followerPlayerId) return room;
+    if (room.misaEyesUsed || room.info.misaUsedThisPhase) return room;
+    if (part !== 'first' && part !== 'last') return room;
+    const target = room.secrets[targetId];
+    if (!target || !target.alive || targetId === myPlayerId || targetId === room.kiraPlayerId) return room;
+
+    room.misaEyesUsed = true;
+    room.info.misaUsedThisPhase = true;
+    room.info.misaEyesResult = { targetId, part, value: part === 'first' ? target.firstName : target.lastName };
     return room;
   });
 }
@@ -1659,6 +1731,7 @@ function renderGameOver(room) {
     let roleLabel = s.role || '';
     if (roleLabel === 'Kira' && room.xKiraActive) roleLabel = 'X-Kira';
     else if (roleLabel === 'L' && room.nActive) roleLabel = 'N';
+    else if (roleLabel === 'KiraFollower' && room.misaActive) roleLabel = 'Misa';
     else if (roleLabel === 'NPAChief') roleLabel = 'NPA Chief';
     html += `<div class="player-row"><span>${players[id].label} — ${esc(players[id].name)}${status}</span><span>${roleLabel} · ${s.firstName || ''} ${s.lastName || ''}</span></div>`;
   });

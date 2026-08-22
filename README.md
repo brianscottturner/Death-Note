@@ -193,9 +193,23 @@ Each expansion role has three settings, not just an on/off switch:
   recruit-immunity for X-Kira, same "sit out a round" arrest, same
   endgame guess) — only the Information Phase and some display text
   change. Combines freely with the rest of this expansion.
+- **Special Provisions for Kira — Misa**: replaces the Kira Follower.
+  Knows Kira's identity from the start and plays like a normal Follower
+  (chat, Death Note swap, everything) — with one added power:
+  **Shinigami Eyes**, usable **once for the entire game**. Misa picks
+  any other player (including L/N or Watari — nothing is off-limits) and
+  picks either their first name or their last name; the app reveals it
+  to her instantly, no mission needed. Using it costs her **the rest of
+  that Information Phase** — no chat, no kill guess, no Death Note swap
+  for her that round, though Kira can still act and end the team's turn
+  normally. It's genuinely a one-time trade: once spent, it's gone for
+  the rest of the game, even across later Death Note swaps. Structurally
+  Misa *is* the Follower (same seat as any Kira Follower), so she
+  requires an actual Follower to exist — she has no effect in a game
+  where X-Kira ends up active, since X-Kira starts without one.
 
-This expansion will eventually add one more role; X-Kira, Mello, and N
-are implemented so far.
+This expansion's four roles — X-Kira, Mello, N, and Misa — are all
+implemented.
 
 ## Notes
 
@@ -206,8 +220,10 @@ are implemented so far.
   X-Kira is enabled instead of normal Kira, there's no Follower
   until/unless one gets recruited mid-game, so the initial split is 1 L,
   1 X-Kira, and everyone else an Investigator (plus Watari/Mello, if
-  those are also enabled). If N is enabled, N simply takes the L slot —
-  everything else about the split is unchanged.
+  those are also enabled) — Misa has no effect in this case, since she
+  needs a Follower to replace. If N is enabled, N simply takes the L
+  slot — everything else about the split is unchanged. If Misa is
+  enabled (and X-Kira isn't), she simply takes the Kira Follower slot.
 - **Voting**: majority is a strict majority of alive players who voted
   (more than half). Ties or no majority = nothing happens.
 - **Mission team size**: not validated by the app — it's whatever your
