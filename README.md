@@ -25,11 +25,16 @@ player (e.g. only the Leading Investigator's phone shows mission team
 selection; only Kira and the Follower's phones show the night-phase
 strategize panel). Every player also has a private "My Notes" scratchpad
 (collapsed by default, tap to open) visible below the phase content at
-all times — autosaves as they type, persists for the whole game, and
-isn't shared with anyone else, so investigators have somewhere to track
-suspicions even during phases where they're not the one acting. The one
-exception: a player sitting out an Information Phase after being
-arrested can't write notes during that phase either — see Voting below.
+all times — autosaves as they type (up to 2000 characters), persists
+for the whole game, and isn't shared with anyone else, so investigators
+have somewhere to track suspicions even during phases where they're not
+the one acting. Autosave normally waits until you stop typing for a
+moment, but also saves immediately the instant you tap away from the
+notes box or the app/tab gets backgrounded, so a name you jot down and
+immediately act on isn't at risk of being lost before the debounce
+would otherwise have fired. The one exception: a player sitting out an
+Information Phase after being arrested can't write notes during that
+phase either — see Voting below.
 
 **Security note**: rooms are locked to whoever knows the room code (not
 publicly listable/enumerable), but there's no true per-field secrecy

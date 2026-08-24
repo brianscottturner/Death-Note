@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 19;
+const APP_VERSION = 20;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -616,6 +616,22 @@ function initNotesPanel(room) {
     el('notes-saved-indicator').textContent = 'Typing...';
     clearTimeout(notesSaveTimer);
     notesSaveTimer = setTimeout(() => saveNotes(myRoomCode, myPlayerId, textarea.value), 600);
+  });
+
+  // The 600ms debounce above is only for the live "Typing..." indicator while
+  // actively typing. If the player switches away before it fires -- taps back
+  // into the game, their phone locks, the tab gets backgrounded -- a pending
+  // save must not be lost, so flush it immediately on both signals.
+  const flushPendingSave = () => {
+    if (notesSaveTimer) {
+      clearTimeout(notesSaveTimer);
+      notesSaveTimer = null;
+      saveNotes(myRoomCode, myPlayerId, textarea.value);
+    }
+  };
+  textarea.addEventListener('blur', flushPendingSave);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushPendingSave();
   });
 }
 
