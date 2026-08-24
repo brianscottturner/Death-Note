@@ -68,17 +68,24 @@ Each round has four phases, in order:
 2. **Missions** — the app randomly picks a Leading Investigator. The
    physical mission card for the round — not the leader — dictates team
    size (typically 3–8), difficulty, and which names get shared; the
-   leader's actual choice is only who fills the team. Enter the mission's
-   pass/fail result (determined by the physical cards) to award the
-   point, then enter the mission card's name-sharing setting (first
-   names, last names, or both) — the app then pairs everyone on the
-   mission up (each
-   person learns exactly one teammate's name, and has their own name
-   learned by exactly one teammate), automatically avoiding pairing
-   someone with a name they already know from an earlier mission whenever
-   a valid rearrangement exists. Each player only sees their own pairing
-   (who they learned from, and who learned from them) — never the whole
-   mission's mapping.
+   leader's actual choice is only who fills the team. Once the leader
+   confirms a team, **every player** (not just the proposed team) votes
+   Yes or No on whether it goes forward — a public vote, so everyone sees
+   who voted which way. A strict majority approves it (a tie counts as
+   No). If it's voted down, that team dissolves and the app picks a new
+   Leading Investigator — same mission card, same requirements, fresh
+   team — for another attempt. Reject a *second* team on the same
+   mission card and it auto-fails outright (Kira's team scores the
+   point as normal) rather than trying a third time. Once a team is
+   approved, enter the mission's pass/fail result (determined by the
+   physical cards) to award the point, then enter the mission card's
+   name-sharing setting (first names, last names, or both) — the app
+   then pairs everyone on the mission up (each person learns exactly one
+   teammate's name, and has their own name learned by exactly one
+   teammate), automatically avoiding pairing someone with a name they
+   already know from an earlier mission whenever a valid rearrangement
+   exists. Each player only sees their own pairing (who they learned
+   from, and who learned from them) — never the whole mission's mapping.
 3. **Voting** — every alive player secretly votes to arrest a player or
    skip. A strict majority for one player arrests them, and must reveal
    their secret name. Since Information Phase is the very next phase

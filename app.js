@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 18;
+const APP_VERSION = 19;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -710,7 +710,7 @@ async function continueFromDeaths(code) {
     const players = obj(room.players), secrets = obj(room.secrets);
     const eligible = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && !secrets[id].skipNextMission);
     const leaderId = eligible[Math.floor(Math.random() * eligible.length)];
-    room.mission = { leaderId, teamIds: { [leaderId]: true }, result: null, step: 'team' };
+    room.mission = { leaderId, teamIds: { [leaderId]: true }, result: null, step: 'team', rejectionCount: 0 };
     room.phase = 'mission';
     return room;
   });
@@ -742,6 +742,39 @@ function renderMissionPhase(room) {
       html += `</div><button id="btn-mission-confirm" class="primary">Confirm Team</button>`;
     } else {
       html += `<p class="waiting">Waiting for ${leader ? leader.label : '...'} to choose the mission team...</p>`;
+    }
+  } else if (m.step === 'approve') {
+    const teamIds = Object.keys(obj(m.teamIds));
+    const votes = obj(m.approvalVotes);
+    const aliveIds = Object.keys(players).filter(id => secrets[id] && secrets[id].alive);
+    html += `<p class="hint">Team: ${teamIds.map(id => players[id].label).join(', ')}</p>
+      <p class="hint">Everyone votes Yes or No on this team. Majority rules — a tie counts as No.</p>`;
+    if (!m.approvalResolved) {
+      if ((m.rejectionCount || 0) >= 1) {
+        html += `<p class="hint"><strong>This mission was already rejected once — reject this team too and the mission automatically fails.</strong></p>`;
+      }
+      if (votes[myPlayerId] !== undefined) {
+        html += `<p class="waiting">Vote cast. Waiting for others... (${Object.keys(votes).length}/${aliveIds.length} voted)</p>`;
+      } else {
+        html += `<div id="approve-choices">
+          <button class="choice" data-vote="yes">Yes</button>
+          <button class="choice" data-vote="no">No</button>
+        </div>`;
+      }
+    } else {
+      html += `<h3>Votes</h3>`;
+      aliveIds.forEach(id => {
+        const v = votes[id];
+        html += `<div class="player-row"><span>${players[id].label} — ${esc(players[id].name)}</span><span>${v === 'yes' ? 'Yes' : 'No'}</span></div>`;
+      });
+      if (m.approved) {
+        html += `<p><strong>Team APPROVED — the mission proceeds.</strong></p>`;
+      } else if (m.autoFailed) {
+        html += `<p><strong>Team REJECTED a second time — this mission automatically fails. Kira's team gains a point.</strong></p>`;
+      } else {
+        html += `<p><strong>Team REJECTED — a new Leading Investigator will be chosen for the same mission.</strong></p>`;
+      }
+      html += `<button id="btn-approve-continue" class="primary">Continue</button>`;
     }
   } else if (m.step === 'result') {
     const teamIds = Object.keys(obj(m.teamIds));
@@ -801,6 +834,17 @@ function renderMissionPhase(room) {
     });
     el('btn-mission-confirm').addEventListener('click', () => confirmMissionTeam(myRoomCode));
   }
+  if (m.step === 'approve') {
+    if (!m.approvalResolved) {
+      document.querySelectorAll('#approve-choices .choice').forEach(btn => {
+        btn.addEventListener('click', () => castTeamApprovalVote(myRoomCode, btn.dataset.vote));
+      });
+    } else {
+      const continueBtn = el('btn-approve-continue');
+      if (continueBtn) continueBtn.addEventListener('click', () => continueFromTeamApproval(myRoomCode));
+    }
+    maybeResolveTeamApproval(room, myRoomCode);
+  }
   if (m.step === 'result' && isLeader) {
     el('btn-mission-success').addEventListener('click', () => submitMissionResult(myRoomCode, true));
     el('btn-mission-fail').addEventListener('click', () => submitMissionResult(myRoomCode, false));
@@ -830,10 +874,87 @@ async function toggleMissionTeam(code, playerId) {
 async function confirmMissionTeam(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || room.phase !== 'mission' || room.mission.step !== 'team') return room;
-    room.mission.step = 'result';
+    room.mission.step = 'approve';
+    room.mission.approvalVotes = {};
+    room.mission.approvalResolved = false;
     return room;
   });
 }
+
+async function castTeamApprovalVote(code, choice) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'mission' || room.mission.step !== 'approve' || room.mission.approvalResolved) return room;
+    if (!room.secrets[myPlayerId] || !room.secrets[myPlayerId].alive) return room;
+    if (choice !== 'yes' && choice !== 'no') return room;
+    room.mission.approvalVotes = obj(room.mission.approvalVotes);
+    room.mission.approvalVotes[myPlayerId] = choice;
+    return room;
+  });
+}
+
+async function maybeResolveTeamApproval(room, code) {
+  const m = obj(room.mission);
+  if (room.phase !== 'mission' || m.step !== 'approve' || m.approvalResolved) return;
+  const players = obj(room.players), secrets = obj(room.secrets);
+  const aliveIds = Object.keys(players).filter(id => secrets[id] && secrets[id].alive);
+  const votes = obj(m.approvalVotes);
+  if (!aliveIds.every(id => votes[id] !== undefined)) return;
+
+  await runTransaction(ref(db, `rooms/${code}`), (r) => {
+    if (!r || r.phase !== 'mission' || r.mission.step !== 'approve' || r.mission.approvalResolved) return r;
+    const p = obj(r.players), s = obj(r.secrets), v = obj(r.mission.approvalVotes);
+    const alive2 = Object.keys(p).filter(id => s[id] && s[id].alive);
+    if (!alive2.every(id => v[id] !== undefined)) return r;
+
+    let yes = 0, no = 0;
+    alive2.forEach(id => { if (v[id] === 'yes') yes++; else no++; });
+    // Tie counts as No.
+    const approved = yes > no;
+    r.mission.approvalResolved = true;
+    r.mission.approved = approved;
+
+    if (!approved) {
+      r.mission.rejectionCount = (r.mission.rejectionCount || 0) + 1;
+      if (r.mission.rejectionCount >= 2) {
+        r.mission.autoFailed = true;
+        r.kiraScore = (r.kiraScore || 0) + 1;
+        applyWinCheck(r);
+      }
+    }
+    return r;
+  });
+}
+
+async function continueFromTeamApproval(code) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'mission' || room.mission.step !== 'approve' || !room.mission.approvalResolved) return room;
+    if (room.mission.approved) {
+      room.mission.step = 'result';
+      return room;
+    }
+    if (room.mission.autoFailed) {
+      room.phase = 'voting';
+      room.voting = { resolved: false };
+      return room;
+    }
+    // Rejected once -- same mission card, a new Leading Investigator picks a fresh team.
+    const players = obj(room.players), secrets = obj(room.secrets);
+    const prevLeaderId = room.mission.leaderId;
+    let eligible = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && !secrets[id].skipNextMission && id !== prevLeaderId);
+    if (eligible.length === 0) {
+      eligible = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && !secrets[id].skipNextMission);
+    }
+    const newLeaderId = eligible[Math.floor(Math.random() * eligible.length)];
+    room.mission.leaderId = newLeaderId;
+    room.mission.teamIds = { [newLeaderId]: true };
+    room.mission.step = 'team';
+    room.mission.approvalVotes = {};
+    room.mission.approvalResolved = false;
+    room.mission.approved = false;
+    return room;
+  });
+}
+
 async function submitMissionResult(code, success) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || room.phase !== 'mission' || room.mission.step !== 'result') return room;
