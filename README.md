@@ -95,10 +95,13 @@ Each round has four phases, in order:
    same time**, each on their own device, rather than waiting on each
    other — the round only advances once both sides are finished. L (if
    acting this round) is shown 4 suspects, one of whom is truly Kira, and
-   taps Done when finished reviewing them. Meanwhile Kira and the Follower have **2 minutes** to strategize — a
-   countdown is visible to everyone in the phase — and once it runs out
-   their turn ends automatically (same as Kira tapping "Finished") so a
-   slow Kira team can't stall the game. Only Kira — whoever currently
+   taps Done when finished reviewing them. Meanwhile Kira and the Follower have **2 minutes** to strategize — it
+   runs silently in the background rather than as a live-updating
+   countdown on screen (that turned out to be disruptive during real
+   playtesting), so all anyone sees is a single "30 seconds left" notice
+   near the end. Once time actually runs out, their turn ends
+   automatically (same as Kira tapping "Finished") so a slow Kira team
+   can't stall the game. Only Kira — whoever currently
    holds the Death Note — can act: swap the Note with the Follower (not
    twice in a row), make kill guesses (guessing a target's secret first +
    last name) up to **2 successful kills per Information Phase** — the

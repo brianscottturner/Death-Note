@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 17;
+const APP_VERSION = 18;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -636,32 +636,35 @@ async function saveNotes(code, playerId, text) {
 
 /* ---------------- KIRA TURN TIMER ---------------- */
 
+// Runs silently in the background on every device's own local clock -- no
+// live-updating countdown shown on screen (that used to re-render every
+// second and was disruptive during real playtesting). Players just get a
+// single 30-second warning toast, then the auto-finish safety net still
+// fires exactly as before once time actually runs out.
 let kiraTurnAutoFinishTriggered = false;
+let kiraTurnWarningShown = false;
+const KIRA_TURN_WARNING_MS = 30 * 1000;
 
 setInterval(() => {
   if (!currentRoomData || currentRoomData.phase !== 'information') {
     kiraTurnAutoFinishTriggered = false;
+    kiraTurnWarningShown = false;
     return;
   }
   const info = obj(currentRoomData.info);
-  const timerEl = el('info-timer');
-  if (info.kiraDone || !info.kiraDeadline) {
-    if (timerEl) timerEl.textContent = '';
-    return;
-  }
+  if (info.kiraDone || !info.kiraDeadline) return;
   const remainingMs = info.kiraDeadline - Date.now();
   if (remainingMs <= 0) {
-    if (timerEl) timerEl.textContent = "Kira's team is out of time...";
     if (!kiraTurnAutoFinishTriggered) {
       kiraTurnAutoFinishTriggered = true;
       finishKiraTeamTurn(myRoomCode);
     }
     return;
   }
-  const remainingSec = Math.ceil(remainingMs / 1000);
-  const mm = Math.floor(remainingSec / 60);
-  const ss = String(remainingSec % 60).padStart(2, '0');
-  if (timerEl) timerEl.textContent = `Kira's team turn: ${mm}:${ss} remaining`;
+  if (remainingMs <= KIRA_TURN_WARNING_MS && !kiraTurnWarningShown) {
+    kiraTurnWarningShown = true;
+    showToast("<p><strong>30 seconds left for Kira's team to finish this phase...</strong></p>");
+  }
 }, 1000);
 
 function applyWinCheck(room) {
@@ -1276,8 +1279,7 @@ function renderInformationPhase(room) {
     const clearedIds = Object.keys(obj(room.nClearedIds));
     const clearsUsed = room.nClearsUsed || 0;
     const melloRevealed = !!(room.nMelloRevealed && room.melloPlayerId);
-    html += `<div id="info-timer" class="hint"></div>
-      <p class="hint">Definitive Clears: ${clearsUsed} / ${cap} used</p>`;
+    html += `<p class="hint">Definitive Clears: ${clearsUsed} / ${cap} used</p>`;
     if (clearedIds.length > 0) {
       html += `<p class="hint">Cleared: ${clearedIds.map(id => players[id] ? players[id].label : '?').join(', ')}</p>`;
     }
@@ -1309,7 +1311,6 @@ function renderInformationPhase(room) {
     }
   } else if (amL) {
     const suspectIds = Object.keys(obj(info.lSuspects));
-    html += `<div id="info-timer" class="hint"></div>`;
     if (info.lDone) {
       if (suspectIds.length > 0) {
         html += `<p><strong>4 Suspects — one of them is Kira:</strong></p>`;
@@ -1335,8 +1336,7 @@ function renderInformationPhase(room) {
       html += `<p class="hint"><strong>You successfully stole the Death Note. You are now Kira.</strong></p>`;
     }
     html += `<p><strong>Kira:</strong> ${kira.label} — ${esc(kira.name)}${follower ? ` &nbsp; <strong>Follower:</strong> ${follower.label} — ${esc(follower.name)}` : ' &nbsp; <em>(no Follower yet)</em>'}</p>
-      <p class="hint">${follower ? 'Share what you learned during the Mission Phase and strategize.' : "You're operating alone this round."}</p>
-      <div id="info-timer" class="hint"></div><hr>`;
+      <p class="hint">${follower ? 'Share what you learned during the Mission Phase and strategize.' : "You're operating alone this round."}</p><hr>`;
 
     if (amSittingOut) {
       html += `<p class="hint"><strong>You're sitting out this Information Phase.</strong></p>
@@ -1436,7 +1436,6 @@ function renderInformationPhase(room) {
     html += `<p class="waiting">Everyone, close your eyes.<br>
       ${detectiveLabel} is ${info.lDone ? 'done' : detectiveVerb}...<br>
       Kira and the Follower are ${info.kiraDone ? 'done' : 'strategizing'}...${melloWaiting}</p>
-      <div id="info-timer" class="hint" style="text-align:center;"></div>
       <p class="hint">Please use this time to take notes, write down suspicions, and write down a plan for next round.</p>`;
   }
   html += `</div>`;
