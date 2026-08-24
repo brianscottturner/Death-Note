@@ -48,6 +48,18 @@
       <div id="score-label">L: 0 &nbsp;|&nbsp; Kira: 0</div>
     </header>
     <div id="round-content"></div>
+    <div id="kira-chat-panel" class="card hidden">
+      <button id="btn-kira-chat-toggle" class="secondary" type="button">💬 <span id="kira-chat-toggle-label">Kira Team Chat</span></button>
+      <div id="kira-chat-body" class="hidden">
+        <p class="hint">Visible only to you and your Kira-team partner, for the whole game — not just the Information Phase.</p>
+        <p id="kira-chat-restricted-hint" class="hint hidden"></p>
+        <div class="chat-log" id="kira-chat-log"></div>
+        <div class="chat-input-row">
+          <input type="text" id="kira-chat-input" placeholder="Message..." maxlength="200">
+          <button id="btn-kira-chat-send" class="secondary">Send</button>
+        </div>
+      </div>
+    </div>
     <div id="notes-panel" class="card">
       <button id="btn-notes-toggle" class="secondary" type="button">📝 My Private Notes</button>
       <div id="notes-body" class="hidden">
@@ -66,6 +78,6 @@
 
   <div id="toast" class="toast hidden"></div>
 </div>
-<script type="module" src="app.js?v=20"></script>
+<script type="module" src="app.js?v=21"></script>
 </body>
 </html>

@@ -125,7 +125,12 @@ Each round has four phases, in order:
    *then* they can. Kira and the Follower know each other's identity from
    the very start (shown on the role reveal screen), and get a private
    text chat, visible only on their two devices, that persists for the
-   whole game rather than resetting each phase.
+   whole game rather than resetting each phase. The chat panel itself is
+   available for the entire game, not just during the Information Phase
+   (the **2 minute timer stays Information-Phase-only** and governs
+   Kira's kill guesses/swap/ending the phase, same as before) — Kira and
+   the Follower can message each other at any point during Deaths,
+   Missions, or Voting too.
 
 ## Win conditions
 

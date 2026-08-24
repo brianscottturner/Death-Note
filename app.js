@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 20;
+const APP_VERSION = 21;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -494,7 +494,7 @@ function renderReveal(room) {
     roleDesc = "You know who Kira is, and you're utterly devoted to them. You traded half your remaining lifespan for Shinigami Eyes — once for the whole game, you can look at any other player and instantly learn either their first or last name, no mission needed. Using it costs you the rest of that Information Phase.";
   } else if (mySecret.role === 'KiraFollower') {
     roleName = "You are KIRA'S FOLLOWER";
-    roleDesc = "You know who Kira is. Help them strategize during the Information Phase over chat. Only Kira can write in the Death Note or swap it with you — if they choose to swap, you become Kira yourself.";
+    roleDesc = "You know who Kira is. Help them strategize over a private chat you two can use any time, all game long — not just during the Information Phase. Only Kira can write in the Death Note or swap it with you — if they choose to swap, you become Kira yourself.";
   } else if (mySecret.role === 'L' && room.nActive) {
     roleName = 'You are N';
     const cap = room.nClearCap || 2;
@@ -589,6 +589,8 @@ function renderRound(room) {
   updateHeader(room);
   initNotesPanel(room);
   updateNotesLockState(room);
+  initKiraChatPanel();
+  updateKiraChatPanel(room);
   if (room.endgame && room.endgame.active && !room.endgame.resolved) return renderEndgame(room);
   if (room.phase === 'deaths') return renderDeathsPhase(room);
   if (room.phase === 'mission') return renderMissionPhase(room);
@@ -648,6 +650,69 @@ async function saveNotes(code, playerId, text) {
   await set(ref(db, `rooms/${code}/notes/${playerId}`), text || null);
   const indicator = el('notes-saved-indicator');
   if (indicator) indicator.textContent = 'Saved';
+}
+
+/* ---------------- KIRA TEAM CHAT (persistent panel, available every phase) ---------------- */
+
+let kiraChatPanelInitialized = false;
+
+function initKiraChatPanel() {
+  if (kiraChatPanelInitialized) return;
+  kiraChatPanelInitialized = true;
+
+  el('btn-kira-chat-toggle').addEventListener('click', () => {
+    el('kira-chat-body').classList.toggle('hidden');
+  });
+
+  const chatInput = el('kira-chat-input');
+  const sendChat = () => {
+    const text = chatInput.value.trim();
+    if (!text) return;
+    chatInput.value = '';
+    sendChatMessage(myRoomCode, text);
+  };
+  el('btn-kira-chat-send').addEventListener('click', sendChat);
+  chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
+}
+
+function updateKiraChatPanel(room) {
+  const panel = el('kira-chat-panel');
+  if (!panel) return;
+  const amKiraTeam = myPlayerId === room.kiraPlayerId || myPlayerId === room.followerPlayerId;
+  const visible = amKiraTeam && !!room.followerPlayerId;
+  panel.classList.toggle('hidden', !visible);
+  if (!visible) return;
+
+  el('kira-chat-toggle-label').textContent = `Chat with your ${myPlayerId === room.kiraPlayerId ? 'Follower' : 'Kira'}`;
+
+  // The Information-Phase-specific restrictions (Misa's Shinigami Eyes cost,
+  // the arrest sit-out) still block chat, but only during that one phase --
+  // this panel is otherwise available across every other phase of the game.
+  let restricted = false, restrictedReason = '';
+  if (room.phase === 'information') {
+    const info = obj(room.info);
+    if (obj(info.sittingOutIds)[myPlayerId]) {
+      restricted = true;
+      restrictedReason = "You're sitting out this Information Phase.";
+    } else if (room.misaActive && myPlayerId === room.followerPlayerId && info.misaUsedThisPhase) {
+      restricted = true;
+      restrictedReason = 'Your Shinigami Eyes cost you this Information Phase.';
+    }
+  }
+
+  const chatLog = el('kira-chat-log');
+  const chatInput = el('kira-chat-input');
+  const sendBtn = el('btn-kira-chat-send');
+  const restrictedHint = el('kira-chat-restricted-hint');
+
+  if (restrictedHint) restrictedHint.classList.toggle('hidden', !restricted);
+  if (restrictedHint) restrictedHint.textContent = restrictedReason;
+  if (chatInput) chatInput.disabled = restricted;
+  if (sendBtn) sendBtn.disabled = restricted;
+  if (chatLog) {
+    chatLog.innerHTML = renderChatLog(obj(room.kiraChat), obj(room.players));
+    chatLog.scrollTop = chatLog.scrollHeight;
+  }
 }
 
 /* ---------------- KIRA TURN TIMER ---------------- */
@@ -1402,8 +1467,6 @@ function renderInformationPhase(room) {
   const prevKillTarget = el('kill-target') ? el('kill-target').value : null;
   const prevKillFirst = el('kill-first') ? el('kill-first').value : null;
   const prevKillLast = el('kill-last') ? el('kill-last').value : null;
-  const prevChatInput = el('kira-chat-input') ? el('kira-chat-input').value : null;
-  const prevChatFocused = document.activeElement && document.activeElement.id === 'kira-chat-input';
   const prevStealTarget = el('steal-target') ? el('steal-target').value : null;
   const prevAccuseTarget = el('accuse-target') ? el('accuse-target').value : null;
   const prevEyesTarget = el('eyes-target') ? el('eyes-target').value : null;
@@ -1536,15 +1599,6 @@ function renderInformationPhase(room) {
         html += `</div>`;
       }
     }
-
-    if (follower && !misaLockedThisRound && !amSittingOut) {
-      html += `<hr><p><strong>Chat with your ${myPlayerId === room.kiraPlayerId ? 'Follower' : 'Kira'}</strong></p>
-        <div class="chat-log" id="kira-chat-log">${renderChatLog(obj(room.kiraChat), players)}</div>
-        <div class="chat-input-row">
-          <input type="text" id="kira-chat-input" placeholder="Message..." maxlength="200">
-          <button id="btn-kira-chat-send" class="secondary">Send</button>
-        </div>`;
-    }
   } else if (amMello) {
     const stealResult = info.stealResult;
     if (stealResult && stealResult.success && stealResult.victim === myPlayerId) {
@@ -1595,28 +1649,6 @@ function renderInformationPhase(room) {
     if (targetSel && prevKillTarget && [...targetSel.options].some(o => o.value === prevKillTarget)) targetSel.value = prevKillTarget;
     if (firstSel && prevKillFirst) firstSel.value = prevKillFirst;
     if (lastSel && prevKillLast) lastSel.value = prevKillLast;
-
-    const chatLog = el('kira-chat-log');
-    if (chatLog) chatLog.scrollTop = chatLog.scrollHeight;
-    const chatInput = el('kira-chat-input');
-    if (chatInput) {
-      if (prevChatInput) chatInput.value = prevChatInput;
-      if (prevChatFocused) {
-        chatInput.focus();
-        chatInput.setSelectionRange(chatInput.value.length, chatInput.value.length);
-      }
-    }
-    const chatSendBtn = el('btn-kira-chat-send');
-    if (chatSendBtn) {
-      const sendChat = () => {
-        const text = chatInput.value.trim();
-        if (!text) return;
-        chatInput.value = '';
-        sendChatMessage(myRoomCode, text);
-      };
-      chatSendBtn.addEventListener('click', sendChat);
-      chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
-    }
 
     if (!info.kiraDone) {
       const swapBtn = el('btn-swap-note');
