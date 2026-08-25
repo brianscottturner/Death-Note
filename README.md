@@ -71,10 +71,12 @@ Each round has four phases, in order:
 
 1. **Deaths** — reveals anyone killed during the previous Information Phase.
 2. **Missions** — the app randomly picks a Leading Investigator and draws
-   this round's Mission Card from a shuffled digital deck (Black or
-   White, sized to the game's player count) — shown to everyone, along
-   with the exact team size it requires, its points threshold, and
-   which names get shared once it resolves. The leader's only real
+   two Mission Cards from a shuffled digital deck (Black or White,
+   sized to the game's player count). The leader picks one of the two
+   to play this round — the other is discarded, permanently, not
+   returned to the deck. The chosen card is then shown to everyone,
+   along with the exact team size it requires, its points threshold, and
+   which names get shared once it resolves. The leader's only other real
    choice is *who* fills the team; the app enforces the card's team
    size directly (the Confirm button won't unlock until exactly that
    many are picked). Once confirmed, **every player** (not just the
@@ -269,8 +271,10 @@ implemented.
   exactly the required size.
 - **Mission Card deck**: 52 cards (26 Black + 26 White, White a straight
   mirror of Black), filtered per game to only the cards whose team size
-  fits the current player count, then shuffled. One is drawn fresh each
-  round and stays fixed for that round regardless of how many team
+  fits the current player count, then shuffled. Two cards are drawn
+  fresh each round and offered to the leader, who picks one to play —
+  the unpicked card is discarded and never returns to the deck. The
+  chosen card stays fixed for the round regardless of how many team
   proposals get rejected. If a game somehow outlasts the deck, it
   reshuffles and keeps going.
 - **Death reveal**: revealing a death does not reveal the dead player's

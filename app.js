@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 22;
+const APP_VERSION = 23;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -859,10 +859,12 @@ async function continueFromDeaths(code) {
     const players = obj(room.players), secrets = obj(room.secrets);
     const eligible = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && !secrets[id].skipNextMission);
     const leaderId = eligible[Math.floor(Math.random() * eligible.length)];
-    // Drawn once per round and fixed for the round -- rejected team proposals
-    // (the approval-vote retry) pick a new leader/team but never a new card.
-    const card = drawMissionCard(room);
-    room.mission = { leaderId, teamIds: { [leaderId]: true }, result: null, step: 'team', rejectionCount: 0, card };
+    // Two cards are drawn and offered to the leader -- the unpicked one is
+    // discarded (never returned to the deck). Once chosen, the card is fixed
+    // for the round -- rejected team proposals (the approval-vote retry) pick
+    // a new leader/team but never a new card.
+    const cardChoices = { 0: drawMissionCard(room), 1: drawMissionCard(room) };
+    room.mission = { leaderId, teamIds: { [leaderId]: true }, result: null, step: 'choose_card', rejectionCount: 0, cardChoices };
     room.phase = 'mission';
     return room;
   });
@@ -877,10 +879,33 @@ function renderMissionPhase(room) {
   const leader = players[m.leaderId];
   const isLeader = m.leaderId === myPlayerId;
 
-  const card = m.card || {};
-  const cardNameShareLabel = { first: 'First Names', last: 'Last Names', both: 'Both Names' }[card.nameShare] || '';
   let html = `<h2>Mission Phase</h2><div class="card">`;
   html += `<p><strong>Leading Investigator: ${leader ? leader.label + ' — ' + esc(leader.name) : '...'}</strong></p>`;
+
+  if (m.step === 'choose_card') {
+    if (isLeader) {
+      html += `<p class="hint">Choose one of these two Mission Cards. The card you don't pick is discarded.</p>`;
+      html += `<div id="card-choice-list">`;
+      Object.entries(obj(m.cardChoices)).forEach(([key, c]) => {
+        const shareLabel = { first: 'First Names', last: 'Last Names', both: 'Both Names' }[c.nameShare] || '';
+        html += `<button class="choice card-choice-btn" data-key="${key}"><strong>${c.color === 'white' ? 'White' : 'Black'}</strong> — ${c.teamSize} Investigators — ${c.points} Points — Share: ${shareLabel}</button>`;
+      });
+      html += `</div>`;
+    } else {
+      html += `<p class="waiting">Waiting for ${leader ? leader.label : '...'} to choose a Mission Card...</p>`;
+    }
+    html += `</div>`;
+    el('round-content').innerHTML = html;
+    if (isLeader) {
+      document.querySelectorAll('#card-choice-list .card-choice-btn').forEach(btn => {
+        btn.addEventListener('click', () => chooseMissionCard(myRoomCode, btn.dataset.key));
+      });
+    }
+    return;
+  }
+
+  const card = m.card || {};
+  const cardNameShareLabel = { first: 'First Names', last: 'Last Names', both: 'Both Names' }[card.nameShare] || '';
   html += `<p class="hint">Mission Card: <strong>${card.color === 'white' ? 'White' : 'Black'}</strong> — ${card.teamSize} Investigators — ${card.points} Points — Share: ${cardNameShareLabel}</p>`;
 
   if (m.step === 'team') {
@@ -1004,6 +1029,19 @@ function renderMissionPhase(room) {
   }
 }
 
+async function chooseMissionCard(code, choiceKey) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'mission' || room.mission.step !== 'choose_card') return room;
+    if (myPlayerId !== room.mission.leaderId) return room;
+    const choices = obj(room.mission.cardChoices);
+    const chosen = choices[choiceKey];
+    if (!chosen) return room;
+    room.mission.card = chosen;
+    room.mission.cardChoices = null;
+    room.mission.step = 'team';
+    return room;
+  });
+}
 async function toggleMissionTeam(code, playerId) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || room.phase !== 'mission' || room.mission.step !== 'team') return room;
