@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 21;
+const APP_VERSION = 22;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -19,6 +19,70 @@ function shuffle(arr) {
   return a;
 }
 function el(id) { return document.getElementById(id); }
+
+// Mission Card deck: 26 base cards, each valid for specific player counts
+// (a card's team size has to fit within that player count's range). Every
+// base card exists in both Black and White, doubling the deck to 52 --
+// White is a straight mirror of Black, per the physical card set.
+const MISSION_CARD_BASE = [
+  { teamSize: 2, points: 4, nameShare: 'first', decks: [7] },
+  { teamSize: 2, points: 5, nameShare: 'last', decks: [7] },
+  { teamSize: 3, points: 5, nameShare: 'first', decks: [7, 8, 9, 10] },
+  { teamSize: 3, points: 6, nameShare: 'last', decks: [7, 8, 9, 10] },
+  { teamSize: 4, points: 6, nameShare: 'first', decks: [7, 8, 9, 10] },
+  { teamSize: 4, points: 7, nameShare: 'last', decks: [7, 8, 9, 10] },
+  { teamSize: 5, points: 7, nameShare: 'first', decks: [7, 8, 9, 10] },
+  { teamSize: 5, points: 8, nameShare: 'last', decks: [7, 8, 9, 10] },
+  { teamSize: 6, points: 8, nameShare: 'first', decks: [8, 9, 10] },
+  { teamSize: 6, points: 9, nameShare: 'last', decks: [8, 9, 10] },
+  { teamSize: 7, points: 9, nameShare: 'first', decks: [9, 10] },
+  { teamSize: 7, points: 10, nameShare: 'last', decks: [9, 10] },
+  { teamSize: 2, points: 4, nameShare: 'last', decks: [7] },
+  { teamSize: 2, points: 5, nameShare: 'first', decks: [7] },
+  { teamSize: 3, points: 5, nameShare: 'last', decks: [7, 8, 9, 10] },
+  { teamSize: 3, points: 6, nameShare: 'first', decks: [7, 8, 9, 10] },
+  { teamSize: 4, points: 6, nameShare: 'last', decks: [7, 8, 9, 10] },
+  { teamSize: 4, points: 7, nameShare: 'first', decks: [7, 8, 9, 10] },
+  { teamSize: 5, points: 7, nameShare: 'last', decks: [7, 8, 9, 10] },
+  { teamSize: 5, points: 8, nameShare: 'first', decks: [7, 8, 9, 10] },
+  { teamSize: 6, points: 8, nameShare: 'last', decks: [8, 9, 10] },
+  { teamSize: 6, points: 9, nameShare: 'first', decks: [8, 9, 10] },
+  { teamSize: 7, points: 9, nameShare: 'last', decks: [9, 10] },
+  { teamSize: 7, points: 10, nameShare: 'first', decks: [9, 10] },
+  { teamSize: 4, points: 5, nameShare: 'both', decks: [7, 8, 9, 10] },
+  { teamSize: 3, points: 5, nameShare: 'both', decks: [7, 8, 9, 10] },
+];
+
+function buildMissionDeck(playerCount) {
+  const cards = [];
+  MISSION_CARD_BASE.forEach((base) => {
+    if (!base.decks.includes(playerCount)) return;
+    cards.push({ teamSize: base.teamSize, points: base.points, nameShare: base.nameShare, color: 'black' });
+    cards.push({ teamSize: base.teamSize, points: base.points, nameShare: base.nameShare, color: 'white' });
+  });
+  return shuffle(cards);
+}
+
+// Draws the next card from room.missionDeck (an object-map keyed by draw
+// order, since Firebase doesn't preserve arrays), advancing missionDeckIndex.
+// If the deck's been fully drawn, reshuffles a fresh copy of the same
+// player-count deck and starts over -- equivalent to reshuffling a discard
+// pile, without needing to actually track one.
+function drawMissionCard(room) {
+  const deck = obj(room.missionDeck);
+  const total = Object.keys(deck).length;
+  let idx = room.missionDeckIndex || 0;
+  if (idx >= total) {
+    const playerCount = Object.keys(obj(room.players)).length;
+    const fresh = buildMissionDeck(playerCount);
+    room.missionDeck = {};
+    fresh.forEach((c, i) => { room.missionDeck[i] = c; });
+    idx = 0;
+  }
+  const card = obj(room.missionDeck)[idx];
+  room.missionDeckIndex = idx + 1;
+  return card;
+}
 el('app-version').textContent = 'v' + APP_VERSION;
 
 // Assigns each team member to learn one other member's name (a derangement:
@@ -471,6 +535,10 @@ async function startGame(code) {
     if (watariEnabled) room.watariPlayerId = playerIds.find(id => secrets[id].role === 'Watari');
     if (melloEnabled) room.melloPlayerId = playerIds.find(id => secrets[id].role === 'Mello');
     if (npaEnabled) room.npaPlayerId = playerIds.find(id => secrets[id].role === 'NPAChief');
+    const missionDeck = buildMissionDeck(count);
+    room.missionDeck = {};
+    missionDeck.forEach((c, i) => { room.missionDeck[i] = c; });
+    room.missionDeckIndex = 0;
     room.status = 'reveal';
     return room;
   });
@@ -791,7 +859,10 @@ async function continueFromDeaths(code) {
     const players = obj(room.players), secrets = obj(room.secrets);
     const eligible = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && !secrets[id].skipNextMission);
     const leaderId = eligible[Math.floor(Math.random() * eligible.length)];
-    room.mission = { leaderId, teamIds: { [leaderId]: true }, result: null, step: 'team', rejectionCount: 0 };
+    // Drawn once per round and fixed for the round -- rejected team proposals
+    // (the approval-vote retry) pick a new leader/team but never a new card.
+    const card = drawMissionCard(room);
+    room.mission = { leaderId, teamIds: { [leaderId]: true }, result: null, step: 'team', rejectionCount: 0, card };
     room.phase = 'mission';
     return room;
   });
@@ -806,21 +877,27 @@ function renderMissionPhase(room) {
   const leader = players[m.leaderId];
   const isLeader = m.leaderId === myPlayerId;
 
+  const card = m.card || {};
+  const cardNameShareLabel = { first: 'First Names', last: 'Last Names', both: 'Both Names' }[card.nameShare] || '';
   let html = `<h2>Mission Phase</h2><div class="card">`;
   html += `<p><strong>Leading Investigator: ${leader ? leader.label + ' — ' + esc(leader.name) : '...'}</strong></p>`;
+  html += `<p class="hint">Mission Card: <strong>${card.color === 'white' ? 'White' : 'Black'}</strong> — ${card.teamSize} Investigators — ${card.points} Points — Share: ${cardNameShareLabel}</p>`;
 
   if (m.step === 'team') {
+    const teamIds = obj(m.teamIds);
+    const teamCount = Object.keys(teamIds).length;
     if (isLeader) {
-      html += `<p class="hint">Choose the players joining this meeting (you're included automatically). Your physical mission card tells you how many are required.</p>`;
+      html += `<p class="hint">Choose ${card.teamSize} players total to join this meeting (you're included automatically). (${teamCount}/${card.teamSize} selected)</p>`;
       const eligible = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && !secrets[id].skipNextMission);
-      const teamIds = obj(m.teamIds);
+      const atCap = teamCount >= card.teamSize;
       html += `<div id="mission-team-list">`;
       eligible.forEach(id => {
         const selected = !!teamIds[id];
         const locked = id === m.leaderId;
-        html += `<button class="choice ${selected ? 'selected' : ''}" data-id="${id}" ${locked ? 'disabled' : ''}>${selected ? '✓ ' : ''}${players[id].label} — ${esc(players[id].name)}${locked ? ' (leader)' : ''}</button>`;
+        const disabled = locked || (atCap && !selected);
+        html += `<button class="choice ${selected ? 'selected' : ''}" data-id="${id}" ${disabled ? 'disabled' : ''}>${selected ? '✓ ' : ''}${players[id].label} — ${esc(players[id].name)}${locked ? ' (leader)' : ''}</button>`;
       });
-      html += `</div><button id="btn-mission-confirm" class="primary">Confirm Team</button>`;
+      html += `</div><button id="btn-mission-confirm" class="primary" ${teamCount === card.teamSize ? '' : 'disabled'}>Confirm Team</button>`;
     } else {
       html += `<p class="waiting">Waiting for ${leader ? leader.label : '...'} to choose the mission team...</p>`;
     }
@@ -877,15 +954,6 @@ function renderMissionPhase(room) {
     if (teamIds.length < 2) {
       html += `<p class="hint">Only one player was on this mission — no names to share.</p>
         <button id="btn-mission-done" class="primary">Continue</button>`;
-    } else if (!m.shareType) {
-      if (isLeader) {
-        html += `<p class="hint">Choose what to share with the team:</p>
-          <button class="secondary" id="btn-share-first">Share First Names</button>
-          <button class="secondary" id="btn-share-last">Share Last Names</button>
-          <button class="secondary" id="btn-share-both">Share Both Names</button>`;
-      } else {
-        html += `<p class="waiting">Waiting for the Leading Investigator to choose what to share...</p>`;
-      }
     } else if (onMission) {
       const assignment = obj(m.shareAssignment);
       const sourceId = assignment[myPlayerId];
@@ -931,12 +999,6 @@ function renderMissionPhase(room) {
     el('btn-mission-fail').addEventListener('click', () => submitMissionResult(myRoomCode, false));
   }
   if (m.step === 'share') {
-    if (!m.shareType && isLeader) {
-      const firstBtn = el('btn-share-first'), lastBtn = el('btn-share-last'), bothBtn = el('btn-share-both');
-      if (firstBtn) firstBtn.addEventListener('click', () => submitNameShare(myRoomCode, 'first'));
-      if (lastBtn) lastBtn.addEventListener('click', () => submitNameShare(myRoomCode, 'last'));
-      if (bothBtn) bothBtn.addEventListener('click', () => submitNameShare(myRoomCode, 'both'));
-    }
     const doneBtn = el('btn-mission-done');
     if (doneBtn) doneBtn.addEventListener('click', () => continueFromMissionShare(myRoomCode));
   }
@@ -947,14 +1009,20 @@ async function toggleMissionTeam(code, playerId) {
     if (!room || room.phase !== 'mission' || room.mission.step !== 'team') return room;
     if (playerId === room.mission.leaderId) return room;
     room.mission.teamIds = obj(room.mission.teamIds);
-    if (room.mission.teamIds[playerId]) delete room.mission.teamIds[playerId];
-    else room.mission.teamIds[playerId] = true;
+    if (room.mission.teamIds[playerId]) {
+      delete room.mission.teamIds[playerId];
+    } else {
+      // Team size is fixed by the drawn Mission Card -- can't select more than it calls for.
+      if (Object.keys(room.mission.teamIds).length >= room.mission.card.teamSize) return room;
+      room.mission.teamIds[playerId] = true;
+    }
     return room;
   });
 }
 async function confirmMissionTeam(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || room.phase !== 'mission' || room.mission.step !== 'team') return room;
+    if (Object.keys(obj(room.mission.teamIds)).length !== room.mission.card.teamSize) return room;
     room.mission.step = 'approve';
     room.mission.approvalVotes = {};
     room.mission.approvalResolved = false;
@@ -1043,29 +1111,25 @@ async function submitMissionResult(code, success) {
     if (success) room.lScore = (room.lScore || 0) + 1; else room.kiraScore = (room.kiraScore || 0) + 1;
     room.mission.step = 'share';
     applyWinCheck(room);
-    return room;
-  });
-}
-async function submitNameShare(code, shareType) {
-  await runTransaction(ref(db, `rooms/${code}`), (room) => {
-    if (!room || room.phase !== 'mission' || room.mission.step !== 'share') return room;
-    if (room.mission.shareType) return room;
-    if (myPlayerId !== room.mission.leaderId) return room;
+
+    // Name-share type is dictated by the drawn Mission Card, not chosen by the
+    // leader -- compute the pairing immediately once the result is in.
     const teamIds = Object.keys(obj(room.mission.teamIds));
-    if (teamIds.length < 2) return room;
+    if (teamIds.length >= 2) {
+      const shareType = room.mission.card.nameShare;
+      const knownNames = obj(room.knownNames);
+      const assignment = computeShareAssignment(teamIds, knownNames, shareType);
+      room.mission.shareType = shareType;
+      room.mission.shareAssignment = assignment;
 
-    const knownNames = obj(room.knownNames);
-    const assignment = computeShareAssignment(teamIds, knownNames, shareType);
-    room.mission.shareType = shareType;
-    room.mission.shareAssignment = assignment;
-
-    room.knownNames = knownNames;
-    Object.entries(assignment).forEach(([learner, source]) => {
-      room.knownNames[learner] = obj(room.knownNames[learner]);
-      room.knownNames[learner][source] = obj(room.knownNames[learner][source]);
-      if (shareType === 'first' || shareType === 'both') room.knownNames[learner][source].first = true;
-      if (shareType === 'last' || shareType === 'both') room.knownNames[learner][source].last = true;
-    });
+      room.knownNames = knownNames;
+      Object.entries(assignment).forEach(([learner, source]) => {
+        room.knownNames[learner] = obj(room.knownNames[learner]);
+        room.knownNames[learner][source] = obj(room.knownNames[learner][source]);
+        if (shareType === 'first' || shareType === 'both') room.knownNames[learner][source].first = true;
+        if (shareType === 'last' || shareType === 'both') room.knownNames[learner][source].last = true;
+      });
+    }
     return room;
   });
 }

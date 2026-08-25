@@ -70,24 +70,28 @@ so the on-screen label always matches what's actually being served.
 Each round has four phases, in order:
 
 1. **Deaths** — reveals anyone killed during the previous Information Phase.
-2. **Missions** — the app randomly picks a Leading Investigator. The
-   physical mission card for the round — not the leader — dictates team
-   size (typically 3–8), difficulty, and which names get shared; the
-   leader's actual choice is only who fills the team. Once the leader
-   confirms a team, **every player** (not just the proposed team) votes
-   Yes or No on whether it goes forward — a public vote, so everyone sees
-   who voted which way. A strict majority approves it (a tie counts as
-   No). If it's voted down, that team dissolves and the app picks a new
-   Leading Investigator — same mission card, same requirements, fresh
-   team — for another attempt. Reject a *second* team on the same
-   mission card and it auto-fails outright (Kira's team scores the
-   point as normal) rather than trying a third time. Once a team is
-   approved, enter the mission's pass/fail result (determined by the
-   physical cards) to award the point, then enter the mission card's
-   name-sharing setting (first names, last names, or both) — the app
-   then pairs everyone on the mission up (each person learns exactly one
-   teammate's name, and has their own name learned by exactly one
-   teammate), automatically avoiding pairing someone with a name they
+2. **Missions** — the app randomly picks a Leading Investigator and draws
+   this round's Mission Card from a shuffled digital deck (Black or
+   White, sized to the game's player count) — shown to everyone, along
+   with the exact team size it requires, its points threshold, and
+   which names get shared once it resolves. The leader's only real
+   choice is *who* fills the team; the app enforces the card's team
+   size directly (the Confirm button won't unlock until exactly that
+   many are picked). Once confirmed, **every player** (not just the
+   proposed team) votes Yes or No on whether it goes forward — a public
+   vote, so everyone sees who voted which way. A strict majority
+   approves it (a tie counts as No). If it's voted down, that team
+   dissolves and the app picks a new Leading Investigator — same
+   Mission Card, same requirements, fresh team — for another attempt.
+   Reject a *second* team on the same card and it auto-fails outright
+   (Kira's team scores the point as normal) rather than trying a third
+   time. Once a team is approved, enter the mission's pass/fail result
+   — still determined by physically playing Supply Cards away from the
+   app for now, using the points threshold the app already showed you —
+   to award the point; the app then pairs everyone on the mission up
+   using the Mission Card's name-share type automatically (each person
+   learns exactly one teammate's name, and has their own name learned
+   by exactly one teammate), avoiding pairing someone with a name they
    already know from an earlier mission whenever a valid rearrangement
    exists. Each player only sees their own pairing (who they learned
    from, and who learned from them) — never the whole mission's mapping.
@@ -260,9 +264,15 @@ implemented.
   slot — everything else about the split is unchanged.
 - **Voting**: majority is a strict majority of alive players who voted
   (more than half). Ties or no majority = nothing happens.
-- **Mission team size**: not validated by the app — it's whatever your
-  physical mission card says, the app just lets the leader pick which
-  players fill the team.
+- **Mission team size**: enforced by the app, driven by the round's
+  drawn Mission Card — the leader can only confirm a team once it's
+  exactly the required size.
+- **Mission Card deck**: 52 cards (26 Black + 26 White, White a straight
+  mirror of Black), filtered per game to only the cards whose team size
+  fits the current player count, then shuffled. One is drawn fresh each
+  round and stays fixed for that round regardless of how many team
+  proposals get rejected. If a game somehow outlasts the deck, it
+  reshuffles and keeps going.
 - **Death reveal**: revealing a death does not reveal the dead player's
   secret role, only that they died.
 - **Name-sharing pairing**: the app randomizes single-cycle arrangements
