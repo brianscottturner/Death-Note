@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 23;
+const APP_VERSION = 24;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -83,6 +83,52 @@ function drawMissionCard(room) {
   room.missionDeckIndex = idx + 1;
   return card;
 }
+
+// Supply Cards: a 45-card deck (15 each of Black/White/Gray) shared by every
+// player for the whole game. Gray always helps a mission's running total;
+// Black/White help when they match the mission card's color and hurt when
+// they don't -- this is where a Kira-aligned player on the team can quietly
+// sabotage without ever being identified (only the totals are public, never
+// who played what).
+const SUPPLY_DECK_COMPOSITION = { black: 15, white: 15, gray: 15 };
+function buildSupplyDeck() {
+  const cards = [];
+  let n = 0;
+  Object.entries(SUPPLY_DECK_COMPOSITION).forEach(([color, count]) => {
+    for (let i = 0; i < count; i++) { cards.push({ id: `sc${n}`, color }); n++; }
+  });
+  return shuffle(cards);
+}
+function supplyCardValue(cardColor, missionColor) {
+  if (cardColor === 'gray') return 1;
+  return cardColor === missionColor ? 2 : -2;
+}
+// Draws `count` cards from room.supplyDeck, reshuffling the discard pile
+// into a fresh deck mid-draw if it runs out (mirroring a real reshuffle).
+// Mutates room in place, same style as drawMissionCard.
+function drawSupplyCards(room, count) {
+  const drawn = [];
+  for (let i = 0; i < count; i++) {
+    let deck = obj(room.supplyDeck);
+    let deckIdx = room.supplyDeckIndex || 0;
+    if (deckIdx >= Object.keys(deck).length) {
+      const discardCards = Object.entries(obj(room.supplyDiscard)).map(([id, color]) => ({ id, color }));
+      if (discardCards.length === 0) break;
+      const fresh = shuffle(discardCards);
+      room.supplyDeck = {};
+      fresh.forEach((c, i2) => { room.supplyDeck[i2] = c; });
+      room.supplyDiscard = {};
+      deckIdx = 0;
+      deck = room.supplyDeck;
+    }
+    const card = deck[deckIdx];
+    if (!card) break;
+    drawn.push(card);
+    room.supplyDeckIndex = deckIdx + 1;
+  }
+  return drawn;
+}
+function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 el('app-version').textContent = 'v' + APP_VERSION;
 
 // Assigns each team member to learn one other member's name (a derangement:
@@ -539,6 +585,19 @@ async function startGame(code) {
     room.missionDeck = {};
     missionDeck.forEach((c, i) => { room.missionDeck[i] = c; });
     room.missionDeckIndex = 0;
+
+    const supplyDeck = buildSupplyDeck();
+    room.supplyDeck = {};
+    supplyDeck.forEach((c, i) => { room.supplyDeck[i] = c; });
+    room.supplyDeckIndex = 0;
+    room.supplyDiscard = {};
+    room.supplyHands = {};
+    playerIds.forEach((id) => {
+      const dealt = drawSupplyCards(room, 3);
+      room.supplyHands[id] = {};
+      dealt.forEach((c) => { room.supplyHands[id][c.id] = c.color; });
+    });
+
     room.status = 'reveal';
     return room;
   });
@@ -959,15 +1018,77 @@ function renderMissionPhase(room) {
       }
       html += `<button id="btn-approve-continue" class="primary">Continue</button>`;
     }
+  } else if (m.step === 'play_cards') {
+    const teamIds = Object.keys(obj(m.teamIds));
+    const submitted = obj(m.playedSubmitted);
+    const onTeam = teamIds.includes(myPlayerId);
+    html += `<p class="hint">Team: ${teamIds.map(id => players[id].label).join(', ')}</p>
+      <p class="hint">Everyone on the mission plays Supply Cards face-down — at least 1 each. ${card.color === 'white' ? 'White' : 'Black'} or Gray cards help the total; the opposite color hurts it.</p>`;
+    if (onTeam) {
+      if (submitted[myPlayerId]) {
+        html += `<p class="waiting">Cards played. Waiting for others... (${Object.keys(submitted).length}/${teamIds.length} played)</p>`;
+      } else {
+        const hand = obj(obj(room.supplyHands)[myPlayerId]);
+        const handIds = Object.keys(hand);
+        const pending = obj(obj(m.pendingPlaySelections)[myPlayerId]);
+        const selectedCount = Object.keys(pending).length;
+        const minRequired = Math.min(1, handIds.length);
+        if (handIds.length === 0) {
+          html += `<p class="hint">You have no Supply Cards left to play.</p>`;
+        } else {
+          html += `<div id="hand-list">`;
+          handIds.forEach((id) => {
+            const selected = !!pending[id];
+            html += `<button class="choice ${selected ? 'selected' : ''}" data-id="${id}">${selected ? '✓ ' : ''}${capitalize(hand[id])}</button>`;
+          });
+          html += `</div>`;
+        }
+        html += `<button id="btn-play-cards" class="primary" ${selectedCount >= minRequired ? '' : 'disabled'}>Play ${selectedCount} Card${selectedCount === 1 ? '' : 's'}</button>`;
+      }
+    } else {
+      html += `<p class="waiting">The mission team is playing their Supply Cards...</p>`;
+    }
   } else if (m.step === 'result') {
     const teamIds = Object.keys(obj(m.teamIds));
+    const breakdown = obj(m.cardBreakdown);
+    const parts = [];
+    if (breakdown.black) parts.push(`${breakdown.black} Black`);
+    if (breakdown.white) parts.push(`${breakdown.white} White`);
+    if (breakdown.gray) parts.push(`${breakdown.gray} Gray`);
+    html += `<p class="hint">Team: ${teamIds.map(id => players[id].label).join(', ')}</p>`;
+    html += `<p class="hint">Cards played: ${parts.join(', ') || 'none'} — total value <strong>${m.cardTotal}</strong> vs. threshold <strong>${card.points}</strong>. (Who played what stays hidden.)</p>`;
+    html += m.result === 'success'
+      ? `<p><strong>Mission SUCCEEDED! ${room.nActive ? 'N' : 'L'} +1</strong></p>`
+      : `<p><strong>Mission FAILED! Kira +1</strong></p>`;
+    html += `<button id="btn-result-continue" class="primary">Continue</button>`;
+  } else if (m.step === 'redistribute') {
+    const teamIds = Object.keys(obj(m.teamIds));
+    const pool = obj(m.redistributePool);
+    const poolIds = Object.keys(pool);
     html += `<p class="hint">Team: ${teamIds.map(id => players[id].label).join(', ')}</p>`;
     if (isLeader) {
-      html += `<p>Play mission cards face-down now. Enter the outcome once compared to the requirement:</p>
-        <button id="btn-mission-success" class="primary">Mission Succeeds (${room.nActive ? 'N' : 'L'} +1)</button>
-        <button id="btn-mission-fail" class="danger">Mission Fails (Kira +1)</button>`;
+      html += `<p class="hint">Hand out these ${poolIds.length} drawn Supply Card${poolIds.length === 1 ? '' : 's'} to the team (max 3 per person). Anything left over when you finish is discarded.</p>`;
+      if (poolIds.length > 0) {
+        html += `<div id="redistribute-pool">`;
+        poolIds.forEach((id) => {
+          html += `<div class="player-row"><span>${capitalize(pool[id])}</span><span>`;
+          teamIds.forEach((tid) => {
+            const handSize = Object.keys(obj(obj(room.supplyHands)[tid])).length;
+            const atCap = handSize >= 3;
+            html += `<button class="choice give-btn" data-card="${id}" data-target="${tid}" ${atCap ? 'disabled' : ''}>Give to ${players[tid].label}</button>`;
+          });
+          html += `</span></div>`;
+        });
+        html += `</div>`;
+      }
+      html += `<h3>Team Hands</h3>`;
+      teamIds.forEach((tid) => {
+        const handSize = Object.keys(obj(obj(room.supplyHands)[tid])).length;
+        html += `<div class="player-row"><span>${players[tid].label} — ${esc(players[tid].name)}</span><span>${handSize}/3</span></div>`;
+      });
+      html += `<button id="btn-redistribute-finish" class="primary">Finish Redistribution</button>`;
     } else {
-      html += `<p class="waiting">Waiting for ${leader.label} to report the mission result...</p>`;
+      html += `<p class="waiting">Waiting for ${leader ? leader.label : '...'} to hand out the Supply Cards drawn for the team...</p>`;
     }
   } else if (m.step === 'share') {
     const teamIds = Object.keys(obj(m.teamIds));
@@ -1019,9 +1140,27 @@ function renderMissionPhase(room) {
     }
     maybeResolveTeamApproval(room, myRoomCode);
   }
-  if (m.step === 'result' && isLeader) {
-    el('btn-mission-success').addEventListener('click', () => submitMissionResult(myRoomCode, true));
-    el('btn-mission-fail').addEventListener('click', () => submitMissionResult(myRoomCode, false));
+  if (m.step === 'play_cards') {
+    const teamIds = Object.keys(obj(m.teamIds));
+    if (teamIds.includes(myPlayerId) && !obj(m.playedSubmitted)[myPlayerId]) {
+      document.querySelectorAll('#hand-list .choice').forEach(btn => {
+        btn.addEventListener('click', () => togglePlayCardSelection(myRoomCode, btn.dataset.id));
+      });
+      const playBtn = el('btn-play-cards');
+      if (playBtn) playBtn.addEventListener('click', () => submitPlayedCards(myRoomCode));
+    }
+    maybeResolvePlayedCards(room, myRoomCode);
+  }
+  if (m.step === 'result') {
+    const continueBtn = el('btn-result-continue');
+    if (continueBtn) continueBtn.addEventListener('click', () => continueFromMissionResult(myRoomCode));
+  }
+  if (m.step === 'redistribute' && isLeader) {
+    document.querySelectorAll('#redistribute-pool .give-btn').forEach(btn => {
+      btn.addEventListener('click', () => giveRedistributeCard(myRoomCode, btn.dataset.card, btn.dataset.target));
+    });
+    const finishBtn = el('btn-redistribute-finish');
+    if (finishBtn) finishBtn.addEventListener('click', () => finishRedistribution(myRoomCode));
   }
   if (m.step === 'share') {
     const doneBtn = el('btn-mission-done');
@@ -1116,7 +1255,9 @@ async function continueFromTeamApproval(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || room.phase !== 'mission' || room.mission.step !== 'approve' || !room.mission.approvalResolved) return room;
     if (room.mission.approved) {
-      room.mission.step = 'result';
+      room.mission.step = 'play_cards';
+      room.mission.cardsPlayed = {};
+      room.mission.pendingPlaySelections = {};
       return room;
     }
     if (room.mission.autoFailed) {
@@ -1142,32 +1283,154 @@ async function continueFromTeamApproval(code) {
   });
 }
 
-async function submitMissionResult(code, success) {
+async function togglePlayCardSelection(code, cardId) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
-    if (!room || room.phase !== 'mission' || room.mission.step !== 'result') return room;
-    room.mission.result = success ? 'success' : 'fail';
-    if (success) room.lScore = (room.lScore || 0) + 1; else room.kiraScore = (room.kiraScore || 0) + 1;
-    room.mission.step = 'share';
-    applyWinCheck(room);
+    if (!room || room.phase !== 'mission' || room.mission.step !== 'play_cards') return room;
+    const teamIds = obj(room.mission.teamIds);
+    if (!teamIds[myPlayerId]) return room;
+    if (obj(room.mission.playedSubmitted)[myPlayerId]) return room;
+    const hand = obj(obj(room.supplyHands)[myPlayerId]);
+    if (hand[cardId] === undefined) return room;
+    room.mission.pendingPlaySelections = obj(room.mission.pendingPlaySelections);
+    room.mission.pendingPlaySelections[myPlayerId] = obj(room.mission.pendingPlaySelections[myPlayerId]);
+    const mine = room.mission.pendingPlaySelections[myPlayerId];
+    if (mine[cardId]) delete mine[cardId]; else mine[cardId] = true;
+    return room;
+  });
+}
+
+// Every player must play at least 1 Supply Card into the mission (0 is only
+// allowed if their hand is genuinely empty). Cards are played face-down --
+// this moves them from hand to discard and records the colors played, but
+// nothing here reveals who played what.
+async function submitPlayedCards(code) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'mission' || room.mission.step !== 'play_cards') return room;
+    const teamIds = obj(room.mission.teamIds);
+    if (!teamIds[myPlayerId]) return room;
+    room.mission.cardsPlayed = obj(room.mission.cardsPlayed);
+    room.mission.playedSubmitted = obj(room.mission.playedSubmitted);
+    if (room.mission.playedSubmitted[myPlayerId]) return room;
+    const hand = obj(obj(room.supplyHands)[myPlayerId]);
+    const handIds = Object.keys(hand);
+    const selection = Object.keys(obj(obj(room.mission.pendingPlaySelections)[myPlayerId]));
+    const minRequired = Math.min(1, handIds.length);
+    if (selection.length < minRequired) return room;
+    if (!selection.every(id => hand[id] !== undefined)) return room;
+
+    const played = {};
+    room.supplyHands[myPlayerId] = obj(room.supplyHands[myPlayerId]);
+    room.supplyDiscard = obj(room.supplyDiscard);
+    selection.forEach((id) => {
+      const color = room.supplyHands[myPlayerId][id];
+      played[id] = color;
+      delete room.supplyHands[myPlayerId][id];
+      room.supplyDiscard[id] = color;
+    });
+    room.mission.cardsPlayed[myPlayerId] = played;
+    // A player who plays 0 cards (empty hand) would leave cardsPlayed[id] as
+    // an empty object, which Firebase silently prunes away -- so submission
+    // is tracked separately via this always-truthy marker instead.
+    room.mission.playedSubmitted[myPlayerId] = true;
+    if (room.mission.pendingPlaySelections) delete room.mission.pendingPlaySelections[myPlayerId];
+    return room;
+  });
+}
+
+async function maybeResolvePlayedCards(room, code) {
+  const m = obj(room.mission);
+  if (room.phase !== 'mission' || m.step !== 'play_cards') return;
+  const teamIds = Object.keys(obj(m.teamIds));
+  const submitted = obj(m.playedSubmitted);
+  if (!teamIds.every(id => submitted[id])) return;
+
+  await runTransaction(ref(db, `rooms/${code}`), (r) => {
+    if (!r || r.phase !== 'mission' || r.mission.step !== 'play_cards') return r;
+    const tIds = Object.keys(obj(r.mission.teamIds));
+    const sub = obj(r.mission.playedSubmitted);
+    if (!tIds.every(id => sub[id])) return r;
+    const pl = obj(r.mission.cardsPlayed);
+
+    const missionColor = r.mission.card.color;
+    let total = 0;
+    const breakdown = { black: 0, white: 0, gray: 0 };
+    tIds.forEach((id) => {
+      Object.values(obj(pl[id])).forEach((color) => {
+        breakdown[color] = (breakdown[color] || 0) + 1;
+        total += supplyCardValue(color, missionColor);
+      });
+    });
+    const success = total >= r.mission.card.points;
+    r.mission.cardTotal = total;
+    r.mission.cardBreakdown = breakdown;
+    r.mission.result = success ? 'success' : 'fail';
+    if (success) r.lScore = (r.lScore || 0) + 1; else r.kiraScore = (r.kiraScore || 0) + 1;
+    r.mission.step = 'result';
+    applyWinCheck(r);
 
     // Name-share type is dictated by the drawn Mission Card, not chosen by the
     // leader -- compute the pairing immediately once the result is in.
-    const teamIds = Object.keys(obj(room.mission.teamIds));
-    if (teamIds.length >= 2) {
-      const shareType = room.mission.card.nameShare;
-      const knownNames = obj(room.knownNames);
-      const assignment = computeShareAssignment(teamIds, knownNames, shareType);
-      room.mission.shareType = shareType;
-      room.mission.shareAssignment = assignment;
+    if (tIds.length >= 2) {
+      const shareType = r.mission.card.nameShare;
+      const knownNames = obj(r.knownNames);
+      const assignment = computeShareAssignment(tIds, knownNames, shareType);
+      r.mission.shareType = shareType;
+      r.mission.shareAssignment = assignment;
 
-      room.knownNames = knownNames;
+      r.knownNames = knownNames;
       Object.entries(assignment).forEach(([learner, source]) => {
-        room.knownNames[learner] = obj(room.knownNames[learner]);
-        room.knownNames[learner][source] = obj(room.knownNames[learner][source]);
-        if (shareType === 'first' || shareType === 'both') room.knownNames[learner][source].first = true;
-        if (shareType === 'last' || shareType === 'both') room.knownNames[learner][source].last = true;
+        r.knownNames[learner] = obj(r.knownNames[learner]);
+        r.knownNames[learner][source] = obj(r.knownNames[learner][source]);
+        if (shareType === 'first' || shareType === 'both') r.knownNames[learner][source].first = true;
+        if (shareType === 'last' || shareType === 'both') r.knownNames[learner][source].last = true;
       });
     }
+    return r;
+  });
+}
+
+// Draws (team size + 1) Supply Cards for the leader to hand back out.
+async function continueFromMissionResult(code) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'mission' || room.mission.step !== 'result') return room;
+    const teamIds = Object.keys(obj(room.mission.teamIds));
+    const drawn = drawSupplyCards(room, teamIds.length + 1);
+    room.mission.redistributePool = {};
+    drawn.forEach((c) => { room.mission.redistributePool[c.id] = c.color; });
+    room.mission.step = 'redistribute';
+    return room;
+  });
+}
+
+async function giveRedistributeCard(code, cardId, targetId) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'mission' || room.mission.step !== 'redistribute') return room;
+    if (myPlayerId !== room.mission.leaderId) return room;
+    const teamIds = obj(room.mission.teamIds);
+    if (!teamIds[targetId]) return room;
+    const pool = obj(room.mission.redistributePool);
+    const color = pool[cardId];
+    if (color === undefined) return room;
+    room.supplyHands = obj(room.supplyHands);
+    room.supplyHands[targetId] = obj(room.supplyHands[targetId]);
+    if (Object.keys(room.supplyHands[targetId]).length >= 3) return room;
+    delete room.mission.redistributePool[cardId];
+    room.supplyHands[targetId][cardId] = color;
+    return room;
+  });
+}
+
+// Any Supply Cards the leader didn't hand out are discarded, not lost --
+// they go back into the shared discard pile like any other played card.
+async function finishRedistribution(code) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'mission' || room.mission.step !== 'redistribute') return room;
+    if (myPlayerId !== room.mission.leaderId) return room;
+    const pool = obj(room.mission.redistributePool);
+    room.supplyDiscard = obj(room.supplyDiscard);
+    Object.entries(pool).forEach(([id, color]) => { room.supplyDiscard[id] = color; });
+    room.mission.redistributePool = null;
+    room.mission.step = 'share';
     return room;
   });
 }

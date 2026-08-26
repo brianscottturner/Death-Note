@@ -87,16 +87,25 @@ Each round has four phases, in order:
    Mission Card, same requirements, fresh team — for another attempt.
    Reject a *second* team on the same card and it auto-fails outright
    (Kira's team scores the point as normal) rather than trying a third
-   time. Once a team is approved, enter the mission's pass/fail result
-   — still determined by physically playing Supply Cards away from the
-   app for now, using the points threshold the app already showed you —
-   to award the point; the app then pairs everyone on the mission up
-   using the Mission Card's name-share type automatically (each person
-   learns exactly one teammate's name, and has their own name learned
-   by exactly one teammate), avoiding pairing someone with a name they
-   already know from an earlier mission whenever a valid rearrangement
-   exists. Each player only sees their own pairing (who they learned
-   from, and who learned from them) — never the whole mission's mapping.
+   time. Once a team is approved, every player on the mission secretly
+   plays one or more Supply Cards from their own hand face-down (at
+   least one each, unless their hand is empty) into the mission — Gray
+   always helps the running total, and Black/White help when they match
+   the Mission Card's color and hurt when they don't, which is the
+   Kira team's quiet way to sabotage a mission without ever being
+   identified. Once everyone's played, the app reveals the total count
+   of each color played and the resulting total against the card's
+   points threshold — never who played what — and awards the point
+   automatically. The leader then draws (team size + 1) fresh Supply
+   Cards and hands them back out to the team (including themself,
+   capped at 3 cards per person); anything left over is discarded.
+   Finally the app pairs everyone on the mission up using the Mission
+   Card's name-share type automatically (each person learns exactly one
+   teammate's name, and has their own name learned by exactly one
+   teammate), avoiding pairing someone with a name they already know
+   from an earlier mission whenever a valid rearrangement exists. Each
+   player only sees their own pairing (who they learned from, and who
+   learned from them) — never the whole mission's mapping.
 3. **Voting** — every alive player secretly votes to arrest a player or
    skip. A strict majority for one player arrests them, and must reveal
    their secret name. Since Information Phase is the very next phase
@@ -277,6 +286,13 @@ implemented.
   chosen card stays fixed for the round regardless of how many team
   proposals get rejected. If a game somehow outlasts the deck, it
   reshuffles and keeps going.
+- **Supply Card deck**: 45 cards (15 Black, 15 White, 15 Gray), shared
+  by the whole table for the entire game. Every player is dealt 3 cards
+  at game start and holds a hand of at most 3 at any time. Gray always
+  adds +1 to a mission's running total; Black/White add +2 when they
+  match the Mission Card's color and subtract 2 when they don't. Played
+  cards go to a shared discard pile; if the deck ever runs dry mid-draw,
+  the discard pile is shuffled into a fresh deck automatically.
 - **Death reveal**: revealing a death does not reveal the dead player's
   secret role, only that they died.
 - **Name-sharing pairing**: the app randomizes single-cycle arrangements
