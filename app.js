@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 24;
+const APP_VERSION = 25;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -129,6 +129,25 @@ function drawSupplyCards(room, count) {
   return drawn;
 }
 function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
+
+// Renders the actual Mission Card artwork with the round's real values
+// overlaid on top of the card's printed blanks (team size / points / who
+// gets named). `tag` controls the wrapper element and any extra classes/
+// attributes needed by the caller (a plain display vs. a clickable choice).
+function missionCardFaceHtml(card, { tag = 'div', extraClass = '', extraAttrs = '' } = {}) {
+  const shareLabel = { first: 'FIRST', last: 'LAST', both: 'BOTH' }[card.nameShare] || '';
+  const colorClass = card.color === 'white' ? 'mission-white' : 'mission-black';
+  const cls = `card-face ${colorClass} ${extraClass}`.trim();
+  return `<${tag} class="${cls}" ${extraAttrs}>
+    <span class="field field-investigators">${card.teamSize}</span>
+    <span class="field field-points">${card.points}</span>
+    <span class="field field-name">${shareLabel}</span>
+  </${tag}>`;
+}
+function supplyCardFaceHtml(color, { tag = 'div', extraClass = '', extraAttrs = '' } = {}) {
+  const cls = `card-face supply-${color} ${extraClass}`.trim();
+  return `<${tag} class="${cls}" ${extraAttrs}></${tag}>`;
+}
 el('app-version').textContent = 'v' + APP_VERSION;
 
 // Assigns each team member to learn one other member's name (a derangement:
@@ -944,10 +963,9 @@ function renderMissionPhase(room) {
   if (m.step === 'choose_card') {
     if (isLeader) {
       html += `<p class="hint">Choose one of these two Mission Cards. The card you don't pick is discarded.</p>`;
-      html += `<div id="card-choice-list">`;
+      html += `<div id="card-choice-list" class="card-face-row">`;
       Object.entries(obj(m.cardChoices)).forEach(([key, c]) => {
-        const shareLabel = { first: 'First Names', last: 'Last Names', both: 'Both Names' }[c.nameShare] || '';
-        html += `<button class="choice card-choice-btn" data-key="${key}"><strong>${c.color === 'white' ? 'White' : 'Black'}</strong> — ${c.teamSize} Investigators — ${c.points} Points — Share: ${shareLabel}</button>`;
+        html += missionCardFaceHtml(c, { tag: 'button', extraClass: 'card-choice-btn', extraAttrs: `type="button" data-key="${key}"` });
       });
       html += `</div>`;
     } else {
@@ -965,7 +983,8 @@ function renderMissionPhase(room) {
 
   const card = m.card || {};
   const cardNameShareLabel = { first: 'First Names', last: 'Last Names', both: 'Both Names' }[card.nameShare] || '';
-  html += `<p class="hint">Mission Card: <strong>${card.color === 'white' ? 'White' : 'Black'}</strong> — ${card.teamSize} Investigators — ${card.points} Points — Share: ${cardNameShareLabel}</p>`;
+  html += missionCardFaceHtml(card, { extraClass: 'small readonly' });
+  html += `<p class="hint">This round's Mission Card — Share: ${cardNameShareLabel}</p>`;
 
   if (m.step === 'team') {
     const teamIds = obj(m.teamIds);
@@ -1036,10 +1055,10 @@ function renderMissionPhase(room) {
         if (handIds.length === 0) {
           html += `<p class="hint">You have no Supply Cards left to play.</p>`;
         } else {
-          html += `<div id="hand-list">`;
+          html += `<div id="hand-list" class="card-face-row">`;
           handIds.forEach((id) => {
             const selected = !!pending[id];
-            html += `<button class="choice ${selected ? 'selected' : ''}" data-id="${id}">${selected ? '✓ ' : ''}${capitalize(hand[id])}</button>`;
+            html += supplyCardFaceHtml(hand[id], { tag: 'button', extraClass: `small ${selected ? 'selected' : ''}`, extraAttrs: `type="button" data-id="${id}"` });
           });
           html += `</div>`;
         }
@@ -1071,7 +1090,9 @@ function renderMissionPhase(room) {
       if (poolIds.length > 0) {
         html += `<div id="redistribute-pool">`;
         poolIds.forEach((id) => {
-          html += `<div class="player-row"><span>${capitalize(pool[id])}</span><span>`;
+          html += `<div class="player-row">`;
+          html += supplyCardFaceHtml(pool[id], { extraClass: 'small readonly' });
+          html += `<span>`;
           teamIds.forEach((tid) => {
             const handSize = Object.keys(obj(obj(room.supplyHands)[tid])).length;
             const atCap = handSize >= 3;
@@ -1143,7 +1164,7 @@ function renderMissionPhase(room) {
   if (m.step === 'play_cards') {
     const teamIds = Object.keys(obj(m.teamIds));
     if (teamIds.includes(myPlayerId) && !obj(m.playedSubmitted)[myPlayerId]) {
-      document.querySelectorAll('#hand-list .choice').forEach(btn => {
+      document.querySelectorAll('#hand-list .card-face').forEach(btn => {
         btn.addEventListener('click', () => togglePlayCardSelection(myRoomCode, btn.dataset.id));
       });
       const playBtn = el('btn-play-cards');

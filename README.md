@@ -293,6 +293,12 @@ implemented.
   match the Mission Card's color and subtract 2 when they don't. Played
   cards go to a shared discard pile; if the deck ever runs dry mid-draw,
   the discard pile is shuffled into a fresh deck automatically.
+- **Card art**: Mission and Supply Cards render using the actual
+  designed artwork (`cards/mission-black.png`, `mission-white.png`,
+  `supply-black.png`, `supply-white.png`, `supply-gray.png`), not plain
+  buttons. The Mission Card's variable values (team size, points, and
+  who gets named) are overlaid live on top of the printed blanks; the
+  Supply Cards need no overlay since each color's value never changes.
 - **Death reveal**: revealing a death does not reveal the dead player's
   secret role, only that they died.
 - **Name-sharing pairing**: the app randomizes single-cycle arrangements

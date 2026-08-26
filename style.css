@@ -371,3 +371,56 @@ hr {
 }
 .toast.hidden { display: none; }
 .toast p { margin: 4px 0; }
+
+/* Physical card art (Mission Cards / Supply Cards), rendered as an image
+   with the round's actual values overlaid on top of the printed blanks. */
+.card-face {
+  container-type: inline-size;
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 220px;
+  aspect-ratio: 464 / 656;
+  margin: 10px auto;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  background-position: center;
+  border: none;
+  border-radius: 8px;
+  padding: 0;
+  cursor: pointer;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.5);
+}
+.card-face.readonly { cursor: default; }
+.card-face[disabled] { cursor: not-allowed; opacity: 0.45; }
+.card-face.selected { box-shadow: 0 0 0 3px var(--gold), 0 3px 12px rgba(0,0,0,0.5); }
+.card-face.small { max-width: 110px; margin: 6px; display: inline-block; vertical-align: top; }
+
+.card-face.mission-black { background-image: url('cards/mission-black.png'); }
+.card-face.mission-white { background-image: url('cards/mission-white.png'); }
+.card-face.supply-black { background-image: url('cards/supply-black.png'); }
+.card-face.supply-white { background-image: url('cards/supply-white.png'); }
+.card-face.supply-gray { background-image: url('cards/supply-gray.png'); }
+
+.card-face .field {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: bold;
+  font-size: 11cqw;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+.card-face.mission-black .field { color: #f4f0e6; }
+.card-face.mission-white .field { color: #1c1c1c; }
+.card-face .field-investigators { top: 46.8%; left: 72.6%; }
+.card-face .field-points { top: 63.3%; left: 60.3%; }
+.card-face .field-name { top: 77.0%; font-size: 8.5cqw; left: 56%; }
+
+.card-face-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 4px;
+}
