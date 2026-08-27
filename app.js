@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 25;
+const APP_VERSION = 26;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -135,7 +135,7 @@ function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 // gets named). `tag` controls the wrapper element and any extra classes/
 // attributes needed by the caller (a plain display vs. a clickable choice).
 function missionCardFaceHtml(card, { tag = 'div', extraClass = '', extraAttrs = '' } = {}) {
-  const shareLabel = { first: 'FIRST', last: 'LAST', both: 'BOTH' }[card.nameShare] || '';
+  const shareLabel = { first: 'First', last: 'Last', both: 'Both' }[card.nameShare] || '';
   const colorClass = card.color === 'white' ? 'mission-white' : 'mission-black';
   const cls = `card-face ${colorClass} ${extraClass}`.trim();
   return `<${tag} class="${cls}" ${extraAttrs}>
