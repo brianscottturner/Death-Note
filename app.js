@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 26;
+const APP_VERSION = 27;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -153,34 +153,17 @@ el('app-version').textContent = 'v' + APP_VERSION;
 // Assigns each team member to learn one other member's name (a derangement:
 // nobody learns their own name, everybody learns from exactly one person and
 // is learned-from by exactly one person). Prefers pairings where the learner
-// doesn't already know the source's relevant name part, retrying random
-// arrangements and keeping the one with the fewest such repeats.
-function computeShareAssignment(teamIds, knownNames, shareType) {
-  function alreadyKnows(learner, source) {
-    const k = (knownNames[learner] && knownNames[learner][source]) || {};
-    if (shareType === 'first') return !!k.first;
-    if (shareType === 'last') return !!k.last;
-    return !!(k.first && k.last);
-  }
-  let best = null, bestViolations = Infinity;
-  const attempts = teamIds.length <= 2 ? 1 : 300;
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    const order = shuffle(teamIds);
-    let violations = 0;
-    const assignment = {};
-    for (let i = 0; i < order.length; i++) {
-      const learner = order[i];
-      const source = order[(i + 1) % order.length];
-      assignment[learner] = source;
-      if (alreadyKnows(learner, source)) violations++;
-    }
-    if (violations < bestViolations) {
-      best = assignment;
-      bestViolations = violations;
-      if (violations === 0) break;
-    }
-  }
-  return best;
+// doesn't already know the source's relevant name part.
+function alreadyKnowsName(knownNames, learner, source, shareType) {
+  const k = (knownNames[learner] && knownNames[learner][source]) || {};
+  if (shareType === 'first') return !!k.first;
+  if (shareType === 'last') return !!k.last;
+  return !!(k.first && k.last);
+}
+// Who a given team member is allowed to share their own name with: any other
+// team member who doesn't already know it via this mission's share type.
+function validShareTargets(teamIds, knownNames, shareType, myId) {
+  return teamIds.filter(t => t !== myId && !alreadyKnowsName(knownNames, t, myId, shareType));
 }
 function obj(x) { return x || {}; }
 function esc(s) {
@@ -1121,24 +1104,52 @@ function renderMissionPhase(room) {
     if (teamIds.length < 2) {
       html += `<p class="hint">Only one player was on this mission — no names to share.</p>
         <button id="btn-mission-done" class="primary">Continue</button>`;
-    } else if (onMission) {
-      const assignment = obj(m.shareAssignment);
-      const sourceId = assignment[myPlayerId];
-      const source = players[sourceId];
-      const secretSource = secrets[sourceId] || {};
-      const sharedValue = m.shareType === 'first' ? secretSource.firstName
-        : m.shareType === 'last' ? secretSource.lastName
-        : `${secretSource.firstName} ${secretSource.lastName}`;
-      const learnerOfMineId = Object.keys(assignment).find(l => assignment[l] === myPlayerId);
-      const learnerOfMine = players[learnerOfMineId];
-      html += `<p><strong>You learned ${source ? source.label : '?'}'s ${shareTypeLabel}: ${esc(sharedValue)}</strong></p>`;
-      if (learnerOfMine) {
-        html += `<p class="hint">${learnerOfMine.label} learned your ${shareTypeLabel}.</p>`;
+    } else if (!m.sharePicksResolved) {
+      if (onMission) {
+        const submitted = obj(m.sharePickSubmitted);
+        if (submitted[myPlayerId]) {
+          html += `<p class="waiting">Your choice is locked in. Waiting for the rest of the team... (${Object.keys(submitted).length}/${teamIds.length})</p>`;
+        } else {
+          const valid = validShareTargets(teamIds, obj(room.knownNames), m.shareType, myPlayerId);
+          if (valid.length === 0) {
+            html += `<p class="hint">Everyone on this team already knows your ${shareTypeLabel} — nothing to share this time.</p>`;
+          } else {
+            html += `<p class="hint">Privately choose ONE teammate to share your ${shareTypeLabel} with. They won't know you chose them until everyone's picked.</p>
+              <div id="share-pick-list">`;
+            valid.forEach((id) => {
+              html += `<button class="choice" data-id="${id}">${players[id].label} — ${esc(players[id].name)}</button>`;
+            });
+            html += `</div>`;
+          }
+        }
+      } else {
+        html += `<p class="waiting">The mission team is privately deciding who to share names with...</p>`;
+      }
+    } else {
+      const myPick = obj(m.sharePicks)[myPlayerId];
+      const myPickPlayer = players[myPick];
+      if (onMission) {
+        html += myPickPlayer
+          ? `<p class="hint">You shared your ${shareTypeLabel} with ${myPickPlayer.label}.</p>`
+          : `<p class="hint">Everyone already knew your ${shareTypeLabel} — you had no one left to share with.</p>`;
+
+        const sharers = Object.entries(obj(m.sharePicks)).filter(([, target]) => target === myPlayerId).map(([sharer]) => sharer);
+        if (sharers.length === 0) {
+          html += `<p class="hint">No one chose to share their ${shareTypeLabel} with you this time.</p>`;
+        } else {
+          sharers.forEach((sharerId) => {
+            const source = players[sharerId];
+            const secretSource = secrets[sharerId] || {};
+            const sharedValue = m.shareType === 'first' ? secretSource.firstName
+              : m.shareType === 'last' ? secretSource.lastName
+              : `${secretSource.firstName} ${secretSource.lastName}`;
+            html += `<p><strong>You learned ${source ? source.label : '?'}'s ${shareTypeLabel}: ${esc(sharedValue)}</strong></p>`;
+          });
+        }
+      } else {
+        html += `<p class="hint">Players on the mission privately chose who to share their ${shareTypeLabel}s with.</p>`;
       }
       html += `<button id="btn-mission-done" class="primary">Continue</button>`;
-    } else {
-      html += `<p class="hint">Players on the mission shared ${shareTypeLabel}s with each other.</p>
-        <button id="btn-mission-done" class="primary">Continue</button>`;
     }
   }
   html += `</div>`;
@@ -1184,8 +1195,18 @@ function renderMissionPhase(room) {
     if (finishBtn) finishBtn.addEventListener('click', () => finishRedistribution(myRoomCode));
   }
   if (m.step === 'share') {
+    const teamIds = Object.keys(obj(m.teamIds));
+    if (!m.sharePicksResolved && teamIds.includes(myPlayerId) && !obj(m.sharePickSubmitted)[myPlayerId]) {
+      document.querySelectorAll('#share-pick-list .choice').forEach(btn => {
+        btn.addEventListener('click', () => submitSharePick(myRoomCode, btn.dataset.id));
+      });
+    }
     const doneBtn = el('btn-mission-done');
     if (doneBtn) doneBtn.addEventListener('click', () => continueFromMissionShare(myRoomCode));
+    if (!m.sharePicksResolved) {
+      maybeAutoSkipSharePick(room, myRoomCode);
+      maybeResolveSharePicks(room, myRoomCode);
+    }
   }
 }
 
@@ -1389,23 +1410,10 @@ async function maybeResolvePlayedCards(room, code) {
     r.mission.step = 'result';
     applyWinCheck(r);
 
-    // Name-share type is dictated by the drawn Mission Card, not chosen by the
-    // leader -- compute the pairing immediately once the result is in.
-    if (tIds.length >= 2) {
-      const shareType = r.mission.card.nameShare;
-      const knownNames = obj(r.knownNames);
-      const assignment = computeShareAssignment(tIds, knownNames, shareType);
-      r.mission.shareType = shareType;
-      r.mission.shareAssignment = assignment;
-
-      r.knownNames = knownNames;
-      Object.entries(assignment).forEach(([learner, source]) => {
-        r.knownNames[learner] = obj(r.knownNames[learner]);
-        r.knownNames[learner][source] = obj(r.knownNames[learner][source]);
-        if (shareType === 'first' || shareType === 'both') r.knownNames[learner][source].first = true;
-        if (shareType === 'last' || shareType === 'both') r.knownNames[learner][source].last = true;
-      });
-    }
+    // Name-share type is dictated by the drawn Mission Card; who actually
+    // shares with whom is each player's own private choice, made in the
+    // 'share' step right after this.
+    r.mission.shareType = r.mission.card.nameShare;
     return r;
   });
 }
@@ -1452,13 +1460,85 @@ async function finishRedistribution(code) {
     Object.entries(pool).forEach(([id, color]) => { room.supplyDiscard[id] = color; });
     room.mission.redistributePool = null;
     room.mission.step = 'share';
+    room.mission.sharePicks = {};
+    room.mission.sharePickSubmitted = {};
+    room.mission.sharePicksResolved = false;
     return room;
+  });
+}
+
+async function submitSharePick(code, targetId) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'mission' || room.mission.step !== 'share') return room;
+    const teamIds = obj(room.mission.teamIds);
+    if (!teamIds[myPlayerId]) return room;
+    room.mission.sharePickSubmitted = obj(room.mission.sharePickSubmitted);
+    if (room.mission.sharePickSubmitted[myPlayerId]) return room;
+    const valid = validShareTargets(Object.keys(teamIds), obj(room.knownNames), room.mission.shareType, myPlayerId);
+    if (!valid.includes(targetId)) return room;
+    room.mission.sharePicks = obj(room.mission.sharePicks);
+    room.mission.sharePicks[myPlayerId] = targetId;
+    room.mission.sharePickSubmitted[myPlayerId] = true;
+    return room;
+  });
+}
+
+// A player with nobody left to tell (everyone on the team already knows
+// their name via this mission's share type) has nothing to pick -- this
+// silently marks them done so the mission isn't stuck waiting on a choice
+// that doesn't exist. Mirrors the play-cards / team-approval auto-resolve
+// pattern: read-only check first, then a guarded transaction.
+async function maybeAutoSkipSharePick(room, code) {
+  const m = obj(room.mission);
+  if (room.phase !== 'mission' || m.step !== 'share' || m.sharePicksResolved) return;
+  const teamIds = Object.keys(obj(m.teamIds));
+  if (!teamIds.includes(myPlayerId)) return;
+  if (obj(m.sharePickSubmitted)[myPlayerId]) return;
+  const valid = validShareTargets(teamIds, obj(room.knownNames), m.shareType, myPlayerId);
+  if (valid.length > 0) return;
+
+  await runTransaction(ref(db, `rooms/${code}`), (r) => {
+    if (!r || r.phase !== 'mission' || r.mission.step !== 'share' || r.mission.sharePicksResolved) return r;
+    r.mission.sharePickSubmitted = obj(r.mission.sharePickSubmitted);
+    if (r.mission.sharePickSubmitted[myPlayerId]) return r;
+    const stillValid = validShareTargets(Object.keys(obj(r.mission.teamIds)), obj(r.knownNames), r.mission.shareType, myPlayerId);
+    if (stillValid.length > 0) return r;
+    r.mission.sharePickSubmitted[myPlayerId] = true;
+    return r;
+  });
+}
+
+async function maybeResolveSharePicks(room, code) {
+  const m = obj(room.mission);
+  if (room.phase !== 'mission' || m.step !== 'share' || m.sharePicksResolved) return;
+  const teamIds = Object.keys(obj(m.teamIds));
+  const submitted = obj(m.sharePickSubmitted);
+  if (!teamIds.every(id => submitted[id])) return;
+
+  await runTransaction(ref(db, `rooms/${code}`), (r) => {
+    if (!r || r.phase !== 'mission' || r.mission.step !== 'share' || r.mission.sharePicksResolved) return r;
+    const tIds = Object.keys(obj(r.mission.teamIds));
+    const sub = obj(r.mission.sharePickSubmitted);
+    if (!tIds.every(id => sub[id])) return r;
+
+    const shareType = r.mission.shareType;
+    const picks = obj(r.mission.sharePicks);
+    r.knownNames = obj(r.knownNames);
+    Object.entries(picks).forEach(([sharer, target]) => {
+      r.knownNames[target] = obj(r.knownNames[target]);
+      r.knownNames[target][sharer] = obj(r.knownNames[target][sharer]);
+      if (shareType === 'first' || shareType === 'both') r.knownNames[target][sharer].first = true;
+      if (shareType === 'last' || shareType === 'both') r.knownNames[target][sharer].last = true;
+    });
+    r.mission.sharePicksResolved = true;
+    return r;
   });
 }
 
 async function continueFromMissionShare(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || room.phase !== 'mission' || room.mission.step !== 'share') return room;
+    if (Object.keys(obj(room.mission.teamIds)).length >= 2 && !room.mission.sharePicksResolved) return room;
     const secrets = obj(room.secrets);
     Object.keys(secrets).forEach(id => { if (secrets[id].skipNextMission) secrets[id].skipNextMission = false; });
     room.phase = 'voting';

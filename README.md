@@ -99,13 +99,19 @@ Each round has four phases, in order:
    automatically. The leader then draws (team size + 1) fresh Supply
    Cards and hands them back out to the team (including themself,
    capped at 3 cards per person); anything left over is discarded.
-   Finally the app pairs everyone on the mission up using the Mission
-   Card's name-share type automatically (each person learns exactly one
-   teammate's name, and has their own name learned by exactly one
-   teammate), avoiding pairing someone with a name they already know
-   from an earlier mission whenever a valid rearrangement exists. Each
-   player only sees their own pairing (who they learned from, and who
-   learned from them) — never the whole mission's mapping.
+   Finally, every player on the mission privately picks *one* teammate
+   to share their own name with (the Mission Card's name-share type
+   determines what part gets shared — first name, last name, or both).
+   Only teammates who don't already know that part of your name from an
+   earlier mission are offered as valid picks; picking is a private,
+   one-shot choice — once submitted it can't be changed. Because it's a
+   free choice rather than an app-computed pairing, the outcome isn't
+   symmetric: someone can end up learned by several teammates at once,
+   or by no one at all, which is the point — it turns name-sharing into
+   a trust decision instead of a random draw. A player with no valid
+   targets (everyone already knows their name) is silently skipped.
+   Each player only sees their own pick and whoever chose to share with
+   them — never the whole mission's picks.
 3. **Voting** — every alive player secretly votes to arrest a player or
    skip. A strict majority for one player arrests them, and must reveal
    their secret name. Since Information Phase is the very next phase
@@ -301,12 +307,15 @@ implemented.
   Supply Cards need no overlay since each color's value never changes.
 - **Death reveal**: revealing a death does not reveal the dead player's
   secret role, only that they died.
-- **Name-sharing pairing**: the app randomizes single-cycle arrangements
-  (everyone on the mission forms one loop of "who learns from whom") and
-  keeps the best one found in ~300 tries, preferring zero repeats of
-  already-known names. On a 2-person mission there's only one possible
-  pairing, so a repeat there is unavoidable if they already know each
-  other's name from before.
+- **Name-sharing picks**: each player privately chooses which teammate
+  to share their own name with, offered only teammates who don't
+  already know that name part — the app never assigns pairings. Picks
+  are recorded via a submission marker separate from the pick itself
+  (a player with zero valid targets is still marked "submitted" with no
+  real pick), since an empty pick and a not-yet-made pick both look
+  like "nothing here" to Firebase. Once every team member has
+  submitted, all picks resolve together, at which point players learn
+  who chose to share with them and see their own confirmed pick.
 
 ## Firebase setup
 
