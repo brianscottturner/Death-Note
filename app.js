@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 29;
+const APP_VERSION = 30;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -19,6 +19,59 @@ function shuffle(arr) {
   return a;
 }
 function el(id) { return document.getElementById(id); }
+
+// Event Cards: narrative twists that fire once L's/N's team score crosses
+// each threshold, revealed at the top of the Deaths Phase (the phase after
+// the round where the threshold was actually crossed, never mid-round).
+const EVENT_CARD_THRESHOLDS = [2, 4, 5, 6, 8];
+const EVENT_CARDS = {
+  '2': { name: 'Kira Video Messages', desc: () => "Every Supply Card played on this round's mission is worth a flat +1 toward the total, no matter its color." },
+  '4': { name: 'Shinigami Eyes', desc: () => "The team votes on who they trust most. That player privately picks one other player and learns half their real name — who they picked stays private." },
+  '5': { name: 'Voluntary Confinement', desc: () => "The group votes to lock up 2 players — same as an arrest (sits out the next mission and Information Phase), but no name is ever revealed, and it doesn't end the game even if one of them is Kira." },
+  '6': { name: 'Lint L Taylor Trap', desc: (room) => `This Information Phase, if Kira's team doesn't successfully kill someone, ${room.nActive ? 'N' : "L"}'s team gets +2 points.` },
+  '8': { name: 'Vindicating Evidence', desc: () => "The next Voting Phase has no Skip option — if no majority forms, whoever got the most votes is arrested anyway." },
+};
+
+// Tallies one-target-each votes, ignoring anyone who hasn't voted.
+function tallyEventVotes(votes, aliveIds) {
+  const tally = {};
+  aliveIds.forEach(id => { const v = votes[id]; if (v) tally[v] = (tally[v] || 0) + 1; });
+  return tally;
+}
+// Picks the top N candidates by vote count, breaking ties at the cutoff
+// randomly rather than by insertion order.
+function pickTopNByVotes(tally, n) {
+  const groups = {};
+  Object.entries(tally).forEach(([id, count]) => { (groups[count] = groups[count] || []).push(id); });
+  const counts = Object.keys(groups).map(Number).sort((a, b) => b - a);
+  const picked = [];
+  for (const c of counts) {
+    if (picked.length >= n) break;
+    picked.push(...shuffle(groups[c]).slice(0, n - picked.length));
+  }
+  return picked;
+}
+function lowestPendingEventCardKey(room) {
+  const keys = Object.keys(obj(room.pendingEventCards)).map(Number).sort((a, b) => a - b);
+  return keys.length ? String(keys[0]) : null;
+}
+// Newly-crossed thresholds are queued for reveal and their passive effects
+// (the ones that just flip a flag for a later phase to consume) armed here;
+// #4 and #5 additionally need a vote, resolved directly in the Deaths Phase.
+function queueNewlyTriggeredEventCards(room) {
+  room.triggeredEventCards = obj(room.triggeredEventCards);
+  room.pendingEventCards = obj(room.pendingEventCards);
+  EVENT_CARD_THRESHOLDS.forEach((n) => {
+    const key = String(n);
+    if (!room.triggeredEventCards[key] && (room.lScore || 0) >= n) {
+      room.triggeredEventCards[key] = true;
+      room.pendingEventCards[key] = true;
+      if (n === 2) room.eventMissionBonusActive = true;
+      if (n === 6) room.eventForceKillActive = true;
+      if (n === 8) room.eventNoSkipActive = true;
+    }
+  });
+}
 
 // Mission Card deck: 26 base cards, each valid for specific player counts
 // (a card's team size has to fit within that player count's range). Every
@@ -301,7 +354,7 @@ async function createRoom(name, customCode) {
     round: 0, phase: null,
     lScore: 0, kiraScore: 0,
     lastInfoPhaseSwapped: false,
-    settings: { watari: 'off', xKira: 'off', mello: 'off', n: 'off', npa: 'off', misa: 'off' },
+    settings: { watari: 'off', xKira: 'off', mello: 'off', n: 'off', npa: 'off', misa: 'off', eventCards: 'off' },
     mission: { step: null },
     voting: { resolved: false },
     info: { lDone: false, kiraDone: false, swappedThisPhase: false },
@@ -436,7 +489,8 @@ function renderLobby(room) {
   const nSetting = (room.settings && room.settings.n) || 'off';
   const npaSetting = (room.settings && room.settings.npa) || 'off';
   const misaSetting = (room.settings && room.settings.misa) || 'off';
-  const configuredCount = (watariSetting !== 'off' ? 1 : 0) + (xKiraSetting !== 'off' ? 1 : 0) + (melloSetting !== 'off' ? 1 : 0) + (nSetting !== 'off' ? 1 : 0) + (npaSetting !== 'off' ? 1 : 0) + (misaSetting !== 'off' ? 1 : 0);
+  const eventCardsSetting = (room.settings && room.settings.eventCards) || 'off';
+  const configuredCount = (watariSetting !== 'off' ? 1 : 0) + (xKiraSetting !== 'off' ? 1 : 0) + (melloSetting !== 'off' ? 1 : 0) + (nSetting !== 'off' ? 1 : 0) + (npaSetting !== 'off' ? 1 : 0) + (misaSetting !== 'off' ? 1 : 0) + (eventCardsSetting !== 'off' ? 1 : 0);
 
   let html = `<h1 class="title">DEATH NOTE<br><span class="subtitle">Kira's Game</span></h1>
     <div class="card">
@@ -471,9 +525,11 @@ function renderLobby(room) {
     html += roleSettingRow('xKira', xKiraSetting, 'X-Kira', 'Replaces Kira. Starts with no Follower — once L\'s team reaches 3 points, X-Kira gets one chance to recruit one during a Voting Phase.');
     html += roleSettingRow('mello', melloSetting, 'Mello', "A neutral third team of one. Can attempt to steal the Death Note from Kira during the Information Phase — succeed, and Mello becomes the new Kira while the old Kira becomes the new Mello. Two failed attempts (by whoever currently holds the role), or an arrest, means elimination.");
     html += roleSettingRow('n', nSetting, 'N', "Replaces L. Instead of 4 suspects, N accuses one player per Information Phase — an innocent gets cleared for good, Mello gets identified, but Kira or the Follower gives nothing away. Limited Definitive Clears for the whole game (2 with 7-8 players, 3 with 9-10).");
+    html += `<p class="hint" style="margin-top:10px;">House Rules</p>`;
+    html += roleSettingRow('eventCards', eventCardsSetting, 'Event Cards', "5 narrative twists (#2/#4/#5/#6/#8) that fire automatically, once each, the moment L's/N's team score crosses that many points — revealed at the start of the Deaths Phase.");
     html += `</div>`;
-  } else if (watariSetting === 'on' || xKiraSetting === 'on' || melloSetting === 'on' || nSetting === 'on' || npaSetting === 'on' || misaSetting === 'on') {
-    const active = [watariSetting === 'on' && 'Watari (Task Force)', npaSetting === 'on' && 'NPA Chief (Task Force)', misaSetting === 'on' && 'Misa (Task Force)', xKiraSetting === 'on' && 'X-Kira (Special Provisions for Kira)', melloSetting === 'on' && 'Mello (Special Provisions for Kira)', nSetting === 'on' && 'N (Special Provisions for Kira)'].filter(Boolean);
+  } else if (watariSetting === 'on' || xKiraSetting === 'on' || melloSetting === 'on' || nSetting === 'on' || npaSetting === 'on' || misaSetting === 'on' || eventCardsSetting === 'on') {
+    const active = [watariSetting === 'on' && 'Watari (Task Force)', npaSetting === 'on' && 'NPA Chief (Task Force)', misaSetting === 'on' && 'Misa (Task Force)', xKiraSetting === 'on' && 'X-Kira (Special Provisions for Kira)', melloSetting === 'on' && 'Mello (Special Provisions for Kira)', nSetting === 'on' && 'N (Special Provisions for Kira)', eventCardsSetting === 'on' && 'Event Cards (House Rules)'].filter(Boolean);
     html += `<p class="hint">Expansion${active.length > 1 ? 's' : ''} active: ${active.join(', ')}</p>`;
   }
 
@@ -602,7 +658,8 @@ function resolveRoomExpansions(room) {
   // Misa requires an actual Follower slot to replace, so she's never active
   // in the same game as X-Kira (which starts with no Follower at all).
   const misaEnabled = resolveRoleSetting(room.settings && room.settings.misa) && !xKiraEnabled;
-  return { watariEnabled, xKiraEnabled, melloEnabled, nEnabled, npaEnabled, misaEnabled };
+  const eventCardsEnabled = resolveRoleSetting(room.settings && room.settings.eventCards);
+  return { watariEnabled, xKiraEnabled, melloEnabled, nEnabled, npaEnabled, misaEnabled, eventCardsEnabled };
 }
 
 function fixedRolesFor({ watariEnabled, xKiraEnabled, melloEnabled, npaEnabled }) {
@@ -617,7 +674,7 @@ function fixedRolesFor({ watariEnabled, xKiraEnabled, melloEnabled, npaEnabled }
 // deal (finalizeCheatRoles) once `secrets` has been built by whichever method
 // picked the roles -- everything downstream of "who has which role" is the same.
 function finishDealingRoom(room, playerIds, secrets, expansions) {
-  const { watariEnabled, xKiraEnabled, melloEnabled, nEnabled, npaEnabled, misaEnabled } = expansions;
+  const { watariEnabled, xKiraEnabled, melloEnabled, nEnabled, npaEnabled, misaEnabled, eventCardsEnabled } = expansions;
   room.secrets = secrets;
   room.lPlayerId = playerIds.find(id => secrets[id].role === 'L');
   room.kiraPlayerId = playerIds.find(id => secrets[id].role === 'Kira');
@@ -639,6 +696,9 @@ function finishDealingRoom(room, playerIds, secrets, expansions) {
   if (watariEnabled) room.watariPlayerId = playerIds.find(id => secrets[id].role === 'Watari');
   if (melloEnabled) room.melloPlayerId = playerIds.find(id => secrets[id].role === 'Mello');
   if (npaEnabled) room.npaPlayerId = playerIds.find(id => secrets[id].role === 'NPAChief');
+  room.eventCardsEnabled = !!eventCardsEnabled;
+  room.triggeredEventCards = {};
+  room.pendingEventCards = {};
   const missionDeck = buildMissionDeck(playerIds.length);
   room.missionDeck = {};
   missionDeck.forEach((c, i) => { room.missionDeck[i] = c; });
@@ -1067,18 +1127,35 @@ function renderDeathsPhase(room) {
   if (deaths.includes(room.watariPlayerId)) {
     html += `<p class="watari-alert">Watari has died... All data deletion.</p>`;
   }
-  html += isHost
-    ? `<button id="btn-deaths-continue" class="primary">Continue</button>`
-    : `<p class="waiting">Waiting for the host to continue...</p>`;
+  if (room.eventKillCheckPenalty) {
+    html += `<p class="hint">🎴 Lint L Taylor Trap: Kira's team didn't successfully kill anyone last Information Phase — ${room.nActive ? 'N' : 'L'}'s team gained +2 points.</p>`;
+  }
+
+  const pendingKey = room.eventCardsEnabled ? lowestPendingEventCardKey(room) : null;
+  if (pendingKey) {
+    html += renderPendingEventCardHtml(room, pendingKey, isHost);
+  } else {
+    html += isHost
+      ? `<button id="btn-deaths-continue" class="primary">Continue</button>`
+      : `<p class="waiting">Waiting for the host to continue...</p>`;
+  }
   html += `</div>`;
   el('round-content').innerHTML = html;
-  if (isHost) el('btn-deaths-continue').addEventListener('click', () => continueFromDeaths(myRoomCode));
+
+  if (!pendingKey) {
+    if (isHost) el('btn-deaths-continue').addEventListener('click', () => continueFromDeaths(myRoomCode));
+    return;
+  }
+  wirePendingEventCardListeners(pendingKey, isHost);
+  if (pendingKey === '4' || pendingKey === '5') maybeResolveEventCardVote(room, myRoomCode, pendingKey);
 }
 
 async function continueFromDeaths(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || room.phase !== 'deaths' || room.hostUid !== myUid) return room;
+    if (Object.keys(obj(room.pendingEventCards)).length > 0) return room;
     room.pendingDeaths = null;
+    room.eventKillCheckPenalty = false;
     const players = obj(room.players), secrets = obj(room.secrets);
     const eligible = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && !secrets[id].skipNextMission);
     const leaderId = eligible[Math.floor(Math.random() * eligible.length)];
@@ -1089,6 +1166,220 @@ async function continueFromDeaths(code) {
     const cardChoices = { 0: drawMissionCard(room), 1: drawMissionCard(room) };
     room.mission = { leaderId, teamIds: { [leaderId]: true }, result: null, step: 'choose_card', rejectionCount: 0, cardChoices };
     room.phase = 'mission';
+    return room;
+  });
+}
+
+/* ---------------- EVENT CARDS (resolved inside the Deaths Phase) ---------------- */
+
+// #2/#6/#8 are pure announcements -- they just arm a flag another phase
+// consumes later, so all that's needed here is a host-only acknowledgement.
+// #4/#5 need an actual public vote, resolved right here before the round
+// can move on.
+function renderPendingEventCardHtml(room, key, isHost) {
+  const info = EVENT_CARDS[key];
+  let html = `<hr><div class="role-box"><div class="role-name">Event Card #${key}: ${info.name}</div><div class="role-desc">${info.desc(room)}</div></div>`;
+  if (key === '2' || key === '6' || key === '8') {
+    html += isHost
+      ? `<button id="btn-event-dismiss" class="primary" data-key="${key}">Continue</button>`
+      : `<p class="waiting">Waiting for the host to continue...</p>`;
+    return html;
+  }
+
+  const players = obj(room.players);
+  const secrets = obj(room.secrets);
+  const aliveIds = Object.keys(players).filter(id => secrets[id] && secrets[id].alive);
+  const state = obj(obj(room.eventCardStates)[key]);
+  const votes = obj(state.votes);
+  const amAlive = secrets[myPlayerId] && secrets[myPlayerId].alive;
+
+  if (key === '4') {
+    if (!state.resolved) {
+      if (!amAlive) {
+        html += `<p class="waiting">You're out — watching the vote unfold. (${Object.keys(votes).length}/${aliveIds.length} voted)</p>`;
+      } else if (votes[myPlayerId] !== undefined) {
+        html += `<p class="waiting">Vote cast. Waiting for others... (${Object.keys(votes).length}/${aliveIds.length} voted)</p>`;
+      } else {
+        html += `<p class="hint">Who do you trust most to use the Shinigami Eyes wisely?</p><div id="event-vote-choices">`;
+        aliveIds.filter(id => id !== myPlayerId).forEach(id => {
+          html += `<button class="choice" data-target="${id}">${players[id].label} — ${esc(players[id].name)}</button>`;
+        });
+        html += `</div>`;
+      }
+    } else {
+      const winner = players[state.winnerId];
+      html += `<h3>Vote Tally</h3>`;
+      aliveIds.forEach(id => {
+        const v = votes[id];
+        html += `<div class="player-row"><span>${players[id].label} — ${esc(players[id].name)}</span><span>${v && players[v] ? players[v].label : '—'}</span></div>`;
+      });
+      html += `<p><strong>${winner ? `${winner.label} — ${esc(winner.name)}` : '?'} received the Shinigami Eyes.</strong></p>`;
+      if (state.winnerId === myPlayerId && !state.eyesResult) {
+        const eyesTargets = aliveIds.filter(id => id !== myPlayerId);
+        html += `<div class="card"><p class="hint">Privately choose who to look at, and which part of their name to learn.</p>`;
+        if (eyesTargets.length === 0) {
+          html += `<p class="hint">No valid targets remain.</p>`;
+        } else {
+          html += `<label>Look at</label>
+            <select id="event-eyes-target">${eyesTargets.map(id => `<option value="${id}">${players[id].label} — ${esc(players[id].name)}</option>`).join('')}</select>
+            <label>Which part of their name?</label>
+            <select id="event-eyes-part"><option value="first">First name</option><option value="last">Last name</option></select>
+            <button id="btn-event-eyes-submit" class="danger">Use Shinigami Eyes</button>`;
+        }
+        html += `</div>`;
+      } else if (state.winnerId === myPlayerId && state.eyesResult) {
+        const t = players[state.eyesResult.targetId];
+        const partLabel = state.eyesResult.part === 'first' ? 'first name' : 'last name';
+        html += `<p><strong>${t ? `${t.label} — ${esc(t.name)}` : '?'}'s ${partLabel}: ${esc(state.eyesResult.value)}</strong></p>`;
+      } else {
+        html += `<p class="hint">Who they chose to look at, and what they learned, is private.</p>`;
+      }
+      const noValidEyesTargets = aliveIds.filter(id => id !== state.winnerId).length === 0;
+      const canDismiss = !!state.eyesResult || noValidEyesTargets;
+      html += canDismiss
+        ? (isHost ? `<button id="btn-event-dismiss" class="primary" data-key="4">Continue</button>` : `<p class="waiting">Waiting for the host to continue...</p>`)
+        : `<p class="waiting">Waiting for ${winner ? winner.label : '...'} to use the Shinigami Eyes...</p>`;
+    }
+  } else if (key === '5') {
+    if (!state.resolved) {
+      if (!amAlive) {
+        html += `<p class="waiting">You're out — watching the vote unfold. (${Object.keys(votes).length}/${aliveIds.length} voted)</p>`;
+      } else if (votes[myPlayerId] !== undefined) {
+        html += `<p class="waiting">Vote cast. Waiting for others... (${Object.keys(votes).length}/${aliveIds.length} voted)</p>`;
+      } else {
+        html += `<p class="hint">Vote for one player to help lock up — the two highest vote-getters are confined.</p><div id="event-vote-choices">`;
+        aliveIds.filter(id => id !== myPlayerId).forEach(id => {
+          html += `<button class="choice" data-target="${id}">${players[id].label} — ${esc(players[id].name)}</button>`;
+        });
+        html += `</div>`;
+      }
+    } else {
+      html += `<h3>Vote Tally</h3>`;
+      aliveIds.forEach(id => {
+        const v = votes[id];
+        html += `<div class="player-row"><span>${players[id].label} — ${esc(players[id].name)}</span><span>${v && players[v] ? players[v].label : '—'}</span></div>`;
+      });
+      const lockedLabels = Object.keys(obj(state.lockedIds)).map(id => players[id] ? players[id].label : id).sort();
+      html += `<p><strong>${lockedLabels.join(' and ')} have been locked up.</strong> They'll sit out the next mission and Information Phase.</p>`;
+      html += isHost
+        ? `<button id="btn-event-dismiss" class="primary" data-key="5">Continue</button>`
+        : `<p class="waiting">Waiting for the host to continue...</p>`;
+    }
+  }
+  return html;
+}
+
+function wirePendingEventCardListeners(key, isHost) {
+  if (key === '2' || key === '6' || key === '8') {
+    if (isHost) { const btn = el('btn-event-dismiss'); if (btn) btn.addEventListener('click', () => dismissPendingEventCard(myRoomCode, key)); }
+    return;
+  }
+  document.querySelectorAll('#event-vote-choices .choice').forEach(btn => {
+    btn.addEventListener('click', () => castEventCardVote(myRoomCode, key, btn.dataset.target));
+  });
+  if (key === '4') {
+    const submitBtn = el('btn-event-eyes-submit');
+    if (submitBtn) submitBtn.addEventListener('click', () => submitEventEyesGuess(myRoomCode, el('event-eyes-target').value, el('event-eyes-part').value));
+  }
+  if (isHost) {
+    const dismissBtn = el('btn-event-dismiss');
+    if (dismissBtn) dismissBtn.addEventListener('click', () => dismissPendingEventCard(myRoomCode, key));
+  }
+}
+
+async function castEventCardVote(code, cardKey, targetId) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'deaths' || !room.eventCardsEnabled) return room;
+    if (!['4', '5'].includes(cardKey) || lowestPendingEventCardKey(room) !== cardKey) return room;
+    const secrets = obj(room.secrets);
+    if (!secrets[myPlayerId] || !secrets[myPlayerId].alive) return room;
+    if (!secrets[targetId] || targetId === myPlayerId) return room;
+    room.eventCardStates = obj(room.eventCardStates);
+    room.eventCardStates[cardKey] = obj(room.eventCardStates[cardKey]);
+    const state = room.eventCardStates[cardKey];
+    if (state.resolved) return room;
+    state.votes = obj(state.votes);
+    state.votes[myPlayerId] = targetId;
+    return room;
+  });
+}
+
+async function maybeResolveEventCardVote(room, code, cardKey) {
+  if (room.phase !== 'deaths' || !room.eventCardsEnabled) return;
+  if (lowestPendingEventCardKey(room) !== cardKey) return;
+  const state = obj(obj(room.eventCardStates)[cardKey]);
+  if (state.resolved) return;
+  const secrets = obj(room.secrets), players = obj(room.players);
+  const aliveIds = Object.keys(players).filter(id => secrets[id] && secrets[id].alive);
+  const votes = obj(state.votes);
+  if (!aliveIds.every(id => votes[id] !== undefined)) return;
+
+  await runTransaction(ref(db, `rooms/${code}`), (r) => {
+    if (!r || r.phase !== 'deaths' || !r.eventCardsEnabled) return r;
+    if (lowestPendingEventCardKey(r) !== cardKey) return r;
+    const s = obj(r.secrets), p = obj(r.players);
+    const alive2 = Object.keys(p).filter(id => s[id] && s[id].alive);
+    r.eventCardStates = obj(r.eventCardStates);
+    r.eventCardStates[cardKey] = obj(r.eventCardStates[cardKey]);
+    const st = r.eventCardStates[cardKey];
+    if (st.resolved) return r;
+    const v = obj(st.votes);
+    if (!alive2.every(id => v[id] !== undefined)) return r;
+
+    const tally = tallyEventVotes(v, alive2);
+    if (cardKey === '4') {
+      st.winnerId = pickTopNByVotes(tally, 1)[0] || null;
+      st.resolved = true;
+    } else if (cardKey === '5') {
+      // Guarantee exactly 2 distinct people even if the vote itself only
+      // ever landed on 1 (e.g. everyone voted for the same target) --
+      // top up with a random pick from the rest of the alive players.
+      let lockedIds = pickTopNByVotes(tally, 2);
+      if (lockedIds.length < 2) {
+        const remaining = shuffle(alive2.filter(id => !lockedIds.includes(id)));
+        lockedIds = lockedIds.concat(remaining.slice(0, 2 - lockedIds.length));
+      }
+      st.lockedIds = {};
+      lockedIds.forEach((id) => {
+        st.lockedIds[id] = true;
+        s[id].skipNextMission = true;
+        s[id].skipNextInfo = true;
+      });
+      st.resolved = true;
+    }
+    return r;
+  });
+}
+
+async function submitEventEyesGuess(code, targetId, part) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'deaths' || !room.eventCardsEnabled) return room;
+    const state = obj(obj(room.eventCardStates)['4']);
+    if (!state.resolved || state.eyesResult || state.winnerId !== myPlayerId) return room;
+    const target = obj(room.secrets)[targetId];
+    if (!target || targetId === myPlayerId) return room;
+    room.eventCardStates['4'].eyesResult = { targetId, part, value: part === 'first' ? target.firstName : target.lastName };
+    return room;
+  });
+}
+
+async function dismissPendingEventCard(code, cardKey) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.phase !== 'deaths' || room.hostUid !== myUid) return room;
+    if (lowestPendingEventCardKey(room) !== cardKey) return room;
+    if (cardKey === '4' || cardKey === '5') {
+      const state = obj(obj(room.eventCardStates)[cardKey]);
+      if (!state.resolved) return room;
+      if (cardKey === '4' && !state.eyesResult) {
+        // The winner may have had zero valid targets left -- treat that as
+        // resolved too rather than blocking the room forever.
+        const players = obj(room.players), secrets = obj(room.secrets);
+        const eyesTargets = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && id !== state.winnerId);
+        if (eyesTargets.length > 0) return room;
+      }
+    }
+    delete room.pendingEventCards[cardKey];
+    if (room.eventCardStates) delete room.eventCardStates[cardKey];
     return room;
   });
 }
@@ -1191,6 +1482,9 @@ function renderMissionPhase(room) {
     const onTeam = teamIds.includes(myPlayerId);
     html += `<p class="hint">Team: ${teamIds.map(id => players[id].label).join(', ')}</p>
       <p class="hint">Everyone on the mission plays Supply Cards face-down — at least 1 each. ${card.color === 'white' ? 'White' : 'Black'} or Gray cards help the total; the opposite color hurts it.</p>`;
+    if (room.eventMissionBonusActive) {
+      html += `<p class="hint">🎬 Card #2 (Kira Video Messages) is active — every card played this mission is worth a flat +1, regardless of color.</p>`;
+    }
     if (onTeam) {
       if (submitted[myPlayerId]) {
         html += `<p class="waiting">Cards played. Waiting for others... (${Object.keys(submitted).length}/${teamIds.length} played)</p>`;
@@ -1224,6 +1518,9 @@ function renderMissionPhase(room) {
     if (breakdown.gray) parts.push(`${breakdown.gray} Gray`);
     html += `<p class="hint">Team: ${teamIds.map(id => players[id].label).join(', ')}</p>`;
     html += `<p class="hint">Cards played: ${parts.join(', ') || 'none'} — total value <strong>${m.cardTotal}</strong> vs. threshold <strong>${card.points}</strong>. (Who played what stays hidden.)</p>`;
+    if (m.eventBonusApplied) {
+      html += `<p class="hint">Card #2 (Kira Video Messages) was active — every card counted as a flat +1, regardless of color.</p>`;
+    }
     html += m.result === 'success'
       ? `<p><strong>Mission SUCCEEDED! ${room.nActive ? 'N' : 'L'} +1</strong></p>`
       : `<p><strong>Mission FAILED! Kira +1</strong></p>`;
@@ -1565,18 +1862,25 @@ async function maybeResolvePlayedCards(room, code) {
     const pl = obj(r.mission.cardsPlayed);
 
     const missionColor = r.mission.card.color;
+    // Card #2 (Kira Video Messages): every card counts as a flat +1 this
+    // mission, ignoring color entirely, instead of the normal +2/-2/+1 rule.
+    const bonusActive = !!(r.eventCardsEnabled && r.eventMissionBonusActive);
     let total = 0;
     const breakdown = { black: 0, white: 0, gray: 0 };
     tIds.forEach((id) => {
       Object.values(obj(pl[id])).forEach((color) => {
         breakdown[color] = (breakdown[color] || 0) + 1;
-        total += supplyCardValue(color, missionColor);
+        total += bonusActive ? 1 : supplyCardValue(color, missionColor);
       });
     });
     const success = total >= r.mission.card.points;
     r.mission.cardTotal = total;
     r.mission.cardBreakdown = breakdown;
     r.mission.result = success ? 'success' : 'fail';
+    if (bonusActive) {
+      r.mission.eventBonusApplied = true;
+      delete r.eventMissionBonusActive;
+    }
     if (success) r.lScore = (r.lScore || 0) + 1; else r.kiraScore = (r.kiraScore || 0) + 1;
     r.mission.step = 'result';
     applyWinCheck(r);
@@ -1738,11 +2042,17 @@ function renderVotingPhase(room) {
       html += `<p class="waiting">Vote cast. Waiting for others... (${Object.keys(votes).length}/${aliveIds.length} voted)</p>`;
     } else {
       const amNpaChief = myPlayerId === room.npaPlayerId;
-      html += `<p class="hint">${amNpaChief ? "As NPA Chief, you're bound to your post — you must name someone, no skipping." : 'Vote to arrest a player, or skip.'}</p><div id="vote-choices">`;
+      const noSkip = amNpaChief || !!room.eventNoSkipActive;
+      const skipHint = amNpaChief
+        ? "As NPA Chief, you're bound to your post — you must name someone, no skipping."
+        : room.eventNoSkipActive
+          ? '🎴 Card #8 (Vindicating Evidence) is active — no Skip this round; if no majority forms, the most-voted player is arrested anyway.'
+          : 'Vote to arrest a player, or skip.';
+      html += `<p class="hint">${skipHint}</p><div id="vote-choices">`;
       aliveIds.filter(id => id !== myPlayerId).forEach(id => {
         html += `<button class="choice" data-target="${id}">${players[id].label} — ${esc(players[id].name)}</button>`;
       });
-      if (!amNpaChief) html += `<button class="choice" data-target="skip">Skip</button>`;
+      if (!noSkip) html += `<button class="choice" data-target="skip">Skip</button>`;
       html += `</div>`;
     }
   } else {
@@ -1916,7 +2226,8 @@ async function castVote(code, targetOrSkip) {
     if (!room || room.phase !== 'voting' || room.voting.resolved) return room;
     if (!room.secrets[myPlayerId] || !room.secrets[myPlayerId].alive) return room;
     // NPA Chief is bound to their post — always names someone, never skips.
-    if (targetOrSkip === 'skip' && myPlayerId === room.npaPlayerId) return room;
+    // Card #8 removes Skip for everyone this round, same restriction either way.
+    if (targetOrSkip === 'skip' && (myPlayerId === room.npaPlayerId || room.eventNoSkipActive)) return room;
     room.voting.votes = obj(room.voting.votes);
     room.voting.votes[myPlayerId] = targetOrSkip;
     return room;
@@ -1956,9 +2267,19 @@ async function maybeResolveVoting(room, code) {
 
     const tally = {};
     alive2.forEach(id => { const vote = v[id]; tally[vote] = (tally[vote] || 0) + 1; });
+    const nonSkipTally = {};
+    Object.entries(tally).forEach(([k, c]) => { if (k !== 'skip') nonSkipTally[k] = c; });
     let topId = null, topCount = 0;
-    Object.entries(tally).forEach(([k, c]) => { if (k !== 'skip' && c > topCount) { topCount = c; topId = k; } });
-    const arrested = (topId && topCount > alive2.length / 2) ? topId : null;
+    Object.entries(nonSkipTally).forEach(([k, c]) => { if (c > topCount) { topCount = c; topId = k; } });
+    let arrested = (topId && topCount > alive2.length / 2) ? topId : null;
+
+    // Card #8 (Vindicating Evidence): no majority still means someone gets
+    // arrested anyway, by plurality — random tie-break among whoever's tied
+    // for the most votes. Only ever applies to the one Voting Phase it was
+    // revealed for, so it's consumed here either way.
+    const eventForcedArrest = !arrested && !!(r.eventCardsEnabled && r.eventNoSkipActive) && Object.keys(nonSkipTally).length > 0;
+    if (eventForcedArrest) arrested = pickTopNByVotes(nonSkipTally, 1)[0];
+    if (r.eventCardsEnabled) delete r.eventNoSkipActive;
 
     r.voting.resolved = true;
     r.voting.arrestedId = arrested;
@@ -2199,6 +2520,9 @@ function renderInformationPhase(room) {
       else if (canSwap) html += `<button id="btn-swap-note" class="secondary">Swap the Death Note (Kira ⇄ Follower)</button>`;
       else html += `<p class="hint">The Death Note was swapped last time — cannot swap again this round.</p>`;
 
+      if (room.eventForceKillActive) {
+        html += `<p class="hint">🎴 Card #6 (Lint L Taylor Trap) is active — if your team doesn't successfully kill someone this phase, ${room.nActive ? 'N' : 'L'}'s team gets +2 points.</p>`;
+      }
       html += `<hr><p><strong>Write a name in the Death Note?</strong></p>`;
       const killsUsed = info.killsThisPhase || 0;
       if (killsUsed >= 2) {
@@ -2339,11 +2663,25 @@ async function maybeAdvanceFromInfo(room, code) {
     if (!r || r.phase !== 'information') return r;
     const i = obj(r.info);
     if (!i.lDone || !i.kiraDone || (melloStillNeedsToAct(r) && !i.melloDone)) return r;
+
+    // Card #6 (Lint L Taylor Trap): checked here, against the phase that's
+    // about to end, before r.info gets reset for the next round.
+    if (r.eventCardsEnabled && r.eventForceKillActive) {
+      if (!((i.killsThisPhase || 0) > 0)) {
+        r.lScore = (r.lScore || 0) + 2;
+        r.eventKillCheckPenalty = true;
+      }
+      delete r.eventForceKillActive;
+      applyWinCheck(r);
+      if (r.status === 'gameover') return r;
+    }
+
     r.round = (r.round || 1) + 1;
     r.phase = 'deaths';
     r.mission = { step: null };
     r.voting = { resolved: false };
     r.info = { lDone: false, kiraDone: false, melloDone: false, swappedThisPhase: false };
+    if (r.eventCardsEnabled) queueNewlyTriggeredEventCards(r);
     return r;
   });
 }

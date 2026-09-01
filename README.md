@@ -70,6 +70,9 @@ so the on-screen label always matches what's actually being served.
 Each round has four phases, in order:
 
 1. **Deaths** — reveals anyone killed during the previous Information Phase.
+   If the Event Cards house rule is on, this is also where any newly
+   triggered Event Card is revealed and (for the two that need one)
+   resolved — see Event Cards below.
 2. **Missions** — the app randomly picks a Leading Investigator and draws
    two Mission Cards from a shuffled digital deck (Black or White,
    sized to the game's player count). The leader picks one of the two
@@ -265,6 +268,45 @@ implemented.
 
 This expansion's three roles — X-Kira, Mello, and N — are all
 implemented.
+
+- **House Rules — Event Cards**: a deck of 5 narrative twists, each keyed
+  to a specific L/N score (**2, 4, 5, 6, 8**) — the moment that many
+  points is reached, the matching card fires **automatically and
+  exactly once**, revealed at the start of the next Deaths Phase (never
+  mid-round, even though the score itself can cross the threshold
+  earlier — during a mission or an Information Phase). If a single jump
+  crosses more than one untriggered threshold at once (Card #6's own
+  +2 penalty can do this), every newly-crossed card queues up and gets
+  revealed one at a time, lowest-numbered first, before the round can
+  continue. Uses the same three-way toggle as every other expansion: On
+  = every card is live for the whole game; Off = none of them exist;
+  Random = a single coin flip at deal time decides whether the whole
+  deck is in play, never announced either way.
+  - **#2 — Kira Video Messages**: for the mission that follows, every
+    Supply Card played counts as a flat **+1**, no matter its color —
+    the normal +2 (matches the Mission Card's color) / −2 (doesn't
+    match) / +1 (Gray) split is suspended for that one mission only.
+  - **#4 — Shinigami Eyes**: the whole team votes on who they trust
+    most (highest vote count wins, ties broken randomly) — no majority
+    required, just plurality. The winner then privately picks one other
+    player and one part of their name (first or last) to instantly
+    learn, exactly like Misa's power but available to anyone. Who they
+    looked at, and what they learned, is never shown to anyone else.
+  - **#5 — Voluntary Confinement**: the whole team votes for one player
+    each (again by plurality, ties broken randomly); the two
+    highest-voted are locked up — same practical consequence as an
+    arrest (sit out the next mission and Information Phase) but with
+    neither of an arrest's usual teeth: **no secret name is ever
+    revealed**, and **the game doesn't end** even if one of the two
+    happens to be Kira.
+  - **#6 — Lint L Taylor Trap**: for the Information Phase that follows,
+    if Kira's team doesn't land a successful kill (whether they don't
+    try, or try and guess wrong), L's/N's team gets **+2 points** —
+    checked once, right as that phase ends.
+  - **#8 — Vindicating Evidence**: the very next Voting Phase has no
+    Skip option. If it still doesn't produce a true majority, whoever
+    got the most votes is arrested anyway (random tie-break if needed)
+    — someone is always named that round.
 
 ## Notes
 
