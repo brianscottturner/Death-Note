@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 27;
+const APP_VERSION = 28;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -315,6 +315,11 @@ async function createRoom(name, customCode) {
     if (code.length < 3 || code.length > 12) {
       throw new Error('Custom room code must be 3-12 letters/numbers.');
     }
+    // A magic custom code, known only to whoever picks it, quietly turns on a
+    // host-only cheat panel for manually assigning roles instead of dealing
+    // them randomly -- useful for setting up a specific playtest scenario.
+    // Nothing about this is visible to anyone who isn't the host of this room.
+    if (code === '04KI26') newRoomData.cheatMode = true;
     // Transaction guards against two hosts claiming the same custom code at once.
     const result = await runTransaction(ref(db, `rooms/${code}`), (existing) => {
       if (existing) return existing;
@@ -419,9 +424,10 @@ function resolveMyPlayerId(room) {
 let expansionPanelOpen = false;
 
 function renderLobby(room) {
+  const isHost = myUid === room.hostUid;
+  if (room.assigningRoles && isHost) return renderCheatRoleAssignment(room);
   const players = obj(room.players);
   const ids = Object.keys(players).sort();
-  const isHost = myUid === room.hostUid;
   const count = ids.length;
   const canStart = isHost && count >= 7 && count <= 10;
   const watariSetting = (room.settings && room.settings.watari) || 'off';
@@ -473,7 +479,7 @@ function renderLobby(room) {
 
   if (isHost) {
     html += canStart
-      ? `<button id="btn-start-game" class="primary">Deal Roles &amp; Start</button>`
+      ? `<button id="btn-start-game" class="primary">${room.cheatMode ? '🎭 Assign Roles &amp; Start' : 'Deal Roles &amp; Start'}</button>`
       : `<p class="hint">Waiting for at least 7 players to join...</p>`;
   } else {
     html += `<p class="hint">Waiting for the host to start the game...</p>`;
@@ -483,7 +489,7 @@ function renderLobby(room) {
   el('lobby-content').innerHTML = html;
 
   if (canStart) {
-    el('btn-start-game').addEventListener('click', () => startGame(myRoomCode));
+    el('btn-start-game').addEventListener('click', () => room.cheatMode ? openCheatRoleAssignment(myRoomCode) : startGame(myRoomCode));
   }
   el('btn-leave-lobby').addEventListener('click', () => leaveLobby(myRoomCode));
 
@@ -496,6 +502,58 @@ function renderLobby(room) {
       btn.addEventListener('click', () => setExpansionRoleSetting(myRoomCode, btn.dataset.role, btn.dataset.value));
     });
   }
+}
+
+function cheatRoleLabel(role, enabled) {
+  return {
+    L: enabled.nEnabled ? 'N' : 'L',
+    Kira: enabled.xKiraEnabled ? 'X-Kira' : 'Kira',
+    KiraFollower: enabled.misaEnabled ? 'Misa' : "Kira's Follower",
+    Watari: 'Watari', Mello: 'Mello', NPAChief: 'NPA Chief', Investigator: 'Investigator'
+  }[role] || role;
+}
+
+// Host-only screen (this room's other players never see it, or even that it
+// exists) for hand-picking exactly which player gets which role instead of
+// the normal random deal -- reached only via the "04KI26" cheat room code.
+function renderCheatRoleAssignment(room) {
+  const players = obj(room.players);
+  const ids = Object.keys(players).sort();
+  const pool = obj(room.cheatRolePool);
+  const assignments = obj(room.cheatAssignments);
+  const enabled = obj(room.cheatEnabled);
+  const required = cheatRolePoolCounts(pool);
+  const got = {};
+  ids.forEach(id => { const r = assignments[id]; if (r) got[r] = (got[r] || 0) + 1; });
+  const uniqueRoles = Object.keys(required);
+  const valid = cheatAssignmentValid(pool, assignments, ids);
+
+  let html = `<h1 class="title">DEATH NOTE<br><span class="subtitle">Kira's Game</span></h1>
+    <div class="card">
+      <p class="hint">🎭 Cheat mode — assign each player's role, then confirm to deal.</p>
+      <div class="player-list">`;
+  ids.forEach(id => {
+    html += `<div class="player-row">
+      <span>${players[id].label} — ${esc(players[id].name)}${players[id].uid === myUid ? ' (you)' : ''}</span>
+      <select class="cheat-role-select" data-id="${id}">
+        <option value="">— choose role —</option>
+        ${uniqueRoles.map(r => `<option value="${r}" ${assignments[id] === r ? 'selected' : ''}>${cheatRoleLabel(r, enabled)}</option>`).join('')}
+      </select>
+    </div>`;
+  });
+  html += `</div>`;
+  html += `<p class="hint">${uniqueRoles.map(r => `${cheatRoleLabel(r, enabled)}: ${got[r] || 0}/${required[r]}`).join(' · ')}</p>`;
+  if (!valid) html += `<p class="hint">Assign every player a role so each count matches exactly before confirming.</p>`;
+  html += `<button id="btn-cheat-confirm" class="primary" ${valid ? '' : 'disabled'}>Confirm &amp; Start</button>`;
+  html += `<button id="btn-cheat-cancel" class="secondary" type="button">Cancel</button>`;
+  html += `</div>`;
+  el('lobby-content').innerHTML = html;
+
+  document.querySelectorAll('.cheat-role-select').forEach(sel => {
+    sel.addEventListener('change', () => setCheatAssignment(myRoomCode, sel.dataset.id, sel.value));
+  });
+  if (valid) el('btn-cheat-confirm').addEventListener('click', () => finalizeCheatRoles(myRoomCode));
+  el('btn-cheat-cancel').addEventListener('click', () => cancelCheatRoleAssignment(myRoomCode));
 }
 
 async function setExpansionRoleSetting(code, role, value) {
@@ -531,76 +589,176 @@ async function leaveLobby(code) {
   showScreen('screen-landing');
 }
 
+function resolveRoleSetting(setting) {
+  return setting === 'on' ? true : setting === 'random' ? Math.random() < 0.5 : false;
+}
+
+function resolveRoomExpansions(room) {
+  const watariEnabled = resolveRoleSetting(room.settings && room.settings.watari);
+  const xKiraEnabled = resolveRoleSetting(room.settings && room.settings.xKira);
+  const melloEnabled = resolveRoleSetting(room.settings && room.settings.mello);
+  const nEnabled = resolveRoleSetting(room.settings && room.settings.n);
+  const npaEnabled = resolveRoleSetting(room.settings && room.settings.npa);
+  // Misa requires an actual Follower slot to replace, so she's never active
+  // in the same game as X-Kira (which starts with no Follower at all).
+  const misaEnabled = resolveRoleSetting(room.settings && room.settings.misa) && !xKiraEnabled;
+  return { watariEnabled, xKiraEnabled, melloEnabled, nEnabled, npaEnabled, misaEnabled };
+}
+
+function fixedRolesFor({ watariEnabled, xKiraEnabled, melloEnabled, npaEnabled }) {
+  return ['L', 'Kira']
+    .concat(xKiraEnabled ? [] : ['KiraFollower'])
+    .concat(watariEnabled ? ['Watari'] : [])
+    .concat(melloEnabled ? ['Mello'] : [])
+    .concat(npaEnabled ? ['NPAChief'] : []);
+}
+
+// Shared by both the normal random deal (startGame) and the cheat-mode manual
+// deal (finalizeCheatRoles) once `secrets` has been built by whichever method
+// picked the roles -- everything downstream of "who has which role" is the same.
+function finishDealingRoom(room, playerIds, secrets, expansions) {
+  const { watariEnabled, xKiraEnabled, melloEnabled, nEnabled, npaEnabled, misaEnabled } = expansions;
+  room.secrets = secrets;
+  room.lPlayerId = playerIds.find(id => secrets[id].role === 'L');
+  room.kiraPlayerId = playerIds.find(id => secrets[id].role === 'Kira');
+  // The resolved (post-coin-flip) outcome, distinct from room.settings.xKira
+  // which stays 'on'/'off'/'random' as configured — every in-game check
+  // needs the actual dealt result, not the pre-deal setting.
+  room.xKiraActive = xKiraEnabled;
+  // N reuses the 'L' role slot entirely (same trick as X-Kira reusing 'Kira') so
+  // Watari's mutual reveal, X-Kira's recruit-immunity, arrest handling, and the
+  // endgame guess all keep working unchanged — only display text branches on this.
+  room.nActive = nEnabled;
+  room.nClearCap = playerIds.length <= 8 ? 2 : 3;
+  // Misa reuses the 'KiraFollower' role slot the same way N/X-Kira reuse 'L'/'Kira',
+  // so partner reveal, chat, swap, N's silent-accusation check, and X-Kira's
+  // recruit-follower-exists check all keep working unchanged.
+  room.misaActive = !xKiraEnabled && misaEnabled;
+  // X-Kira starts without a Follower — one is only assigned if/when recruited mid-game.
+  if (!xKiraEnabled) room.followerPlayerId = playerIds.find(id => secrets[id].role === 'KiraFollower');
+  if (watariEnabled) room.watariPlayerId = playerIds.find(id => secrets[id].role === 'Watari');
+  if (melloEnabled) room.melloPlayerId = playerIds.find(id => secrets[id].role === 'Mello');
+  if (npaEnabled) room.npaPlayerId = playerIds.find(id => secrets[id].role === 'NPAChief');
+  const missionDeck = buildMissionDeck(playerIds.length);
+  room.missionDeck = {};
+  missionDeck.forEach((c, i) => { room.missionDeck[i] = c; });
+  room.missionDeckIndex = 0;
+
+  const supplyDeck = buildSupplyDeck();
+  room.supplyDeck = {};
+  supplyDeck.forEach((c, i) => { room.supplyDeck[i] = c; });
+  room.supplyDeckIndex = 0;
+  room.supplyDiscard = {};
+  room.supplyHands = {};
+  playerIds.forEach((id) => {
+    const dealt = drawSupplyCards(room, 3);
+    room.supplyHands[id] = {};
+    dealt.forEach((c) => { room.supplyHands[id][c.id] = c.color; });
+  });
+
+  room.status = 'reveal';
+}
+
+function freshSecret(role, firstName, lastName) {
+  return {
+    role, firstName, lastName,
+    alive: true, skipNextMission: false, skipNextInfo: false,
+    wrongGuessCount: 0, immune: false, ready: false, wrongStealCount: 0
+  };
+}
+
 async function startGame(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || room.status !== 'lobby') return room;
     const playerIds = Object.keys(obj(room.players));
     const count = playerIds.length;
     if (count < 7 || count > 10) return room;
-    const resolveRoleSetting = (setting) => setting === 'on' ? true : setting === 'random' ? Math.random() < 0.5 : false;
-    const watariEnabled = resolveRoleSetting(room.settings && room.settings.watari);
-    const xKiraEnabled = resolveRoleSetting(room.settings && room.settings.xKira);
-    const melloEnabled = resolveRoleSetting(room.settings && room.settings.mello);
-    const nEnabled = resolveRoleSetting(room.settings && room.settings.n);
-    const npaEnabled = resolveRoleSetting(room.settings && room.settings.npa);
-    const misaEnabled = resolveRoleSetting(room.settings && room.settings.misa);
-    const fixedRoles = ['L', 'Kira']
-      .concat(xKiraEnabled ? [] : ['KiraFollower'])
-      .concat(watariEnabled ? ['Watari'] : [])
-      .concat(melloEnabled ? ['Mello'] : [])
-      .concat(npaEnabled ? ['NPAChief'] : []);
+    const expansions = resolveRoomExpansions(room);
+    const fixedRoles = fixedRolesFor(expansions);
     const roles = shuffle(fixedRoles.concat(Array(count - fixedRoles.length).fill('Investigator')));
     const firstNames = shuffle(FIRST_NAMES).slice(0, count);
     const lastNames = shuffle(LAST_NAMES).slice(0, count);
     const secrets = {};
-    playerIds.forEach((id, i) => {
-      secrets[id] = {
-        role: roles[i], firstName: firstNames[i], lastName: lastNames[i],
-        alive: true, skipNextMission: false, skipNextInfo: false,
-        wrongGuessCount: 0, immune: false, ready: false, wrongStealCount: 0
-      };
-    });
-    room.secrets = secrets;
-    room.lPlayerId = playerIds.find(id => secrets[id].role === 'L');
-    room.kiraPlayerId = playerIds.find(id => secrets[id].role === 'Kira');
-    // The resolved (post-coin-flip) outcome, distinct from room.settings.xKira
-    // which stays 'on'/'off'/'random' as configured — every in-game check
-    // needs the actual dealt result, not the pre-deal setting.
-    room.xKiraActive = xKiraEnabled;
-    // N reuses the 'L' role slot entirely (same trick as X-Kira reusing 'Kira') so
-    // Watari's mutual reveal, X-Kira's recruit-immunity, arrest handling, and the
-    // endgame guess all keep working unchanged — only display text branches on this.
-    room.nActive = nEnabled;
-    room.nClearCap = count <= 8 ? 2 : 3;
-    // Misa reuses the 'KiraFollower' role slot the same way N/X-Kira reuse 'L'/'Kira',
-    // so partner reveal, chat, swap, N's silent-accusation check, and X-Kira's
-    // recruit-follower-exists check all keep working unchanged. She requires an
-    // actual Follower to be dealt, so she's never active in the same game as X-Kira
-    // (which starts with no Follower at all).
-    room.misaActive = !xKiraEnabled && misaEnabled;
-    // X-Kira starts without a Follower — one is only assigned if/when recruited mid-game.
-    if (!xKiraEnabled) room.followerPlayerId = playerIds.find(id => secrets[id].role === 'KiraFollower');
-    if (watariEnabled) room.watariPlayerId = playerIds.find(id => secrets[id].role === 'Watari');
-    if (melloEnabled) room.melloPlayerId = playerIds.find(id => secrets[id].role === 'Mello');
-    if (npaEnabled) room.npaPlayerId = playerIds.find(id => secrets[id].role === 'NPAChief');
-    const missionDeck = buildMissionDeck(count);
-    room.missionDeck = {};
-    missionDeck.forEach((c, i) => { room.missionDeck[i] = c; });
-    room.missionDeckIndex = 0;
+    playerIds.forEach((id, i) => { secrets[id] = freshSecret(roles[i], firstNames[i], lastNames[i]); });
+    finishDealingRoom(room, playerIds, secrets, expansions);
+    return room;
+  });
+}
 
-    const supplyDeck = buildSupplyDeck();
-    room.supplyDeck = {};
-    supplyDeck.forEach((c, i) => { room.supplyDeck[i] = c; });
-    room.supplyDeckIndex = 0;
-    room.supplyDiscard = {};
-    room.supplyHands = {};
-    playerIds.forEach((id) => {
-      const dealt = drawSupplyCards(room, 3);
-      room.supplyHands[id] = {};
-      dealt.forEach((c) => { room.supplyHands[id][c.id] = c.color; });
-    });
+/* ---------------- CHEAT MODE: host manually assigns roles ---------------- */
 
-    room.status = 'reveal';
+function cheatRolePoolCounts(pool) {
+  const counts = {};
+  Object.values(pool).forEach(r => { counts[r] = (counts[r] || 0) + 1; });
+  return counts;
+}
+
+function cheatAssignmentValid(pool, assignments, playerIds) {
+  if (!playerIds.every(id => assignments[id])) return false;
+  const required = cheatRolePoolCounts(pool);
+  const got = {};
+  playerIds.forEach(id => { const r = assignments[id]; got[r] = (got[r] || 0) + 1; });
+  const keys = new Set([...Object.keys(required), ...Object.keys(got)]);
+  for (const k of keys) { if ((required[k] || 0) !== (got[k] || 0)) return false; }
+  return true;
+}
+
+async function openCheatRoleAssignment(code) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || room.status !== 'lobby' || room.hostUid !== myUid || !room.cheatMode) return room;
+    const playerIds = Object.keys(obj(room.players));
+    const count = playerIds.length;
+    if (count < 7 || count > 10) return room;
+    const expansions = resolveRoomExpansions(room);
+    const fixedRoles = fixedRolesFor(expansions);
+    const roles = fixedRoles.concat(Array(count - fixedRoles.length).fill('Investigator'));
+    room.cheatRolePool = {};
+    roles.forEach((r, i) => { room.cheatRolePool[i] = r; });
+    room.cheatEnabled = expansions;
+    room.cheatAssignments = {};
+    room.assigningRoles = true;
+    return room;
+  });
+}
+
+async function setCheatAssignment(code, playerId, role) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || !room.assigningRoles || room.hostUid !== myUid) return room;
+    room.cheatAssignments = room.cheatAssignments || {};
+    if (role) room.cheatAssignments[playerId] = role;
+    else delete room.cheatAssignments[playerId];
+    return room;
+  });
+}
+
+async function cancelCheatRoleAssignment(code) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || !room.assigningRoles || room.hostUid !== myUid) return room;
+    room.assigningRoles = false;
+    delete room.cheatRolePool;
+    delete room.cheatEnabled;
+    delete room.cheatAssignments;
+    return room;
+  });
+}
+
+async function finalizeCheatRoles(code) {
+  await runTransaction(ref(db, `rooms/${code}`), (room) => {
+    if (!room || !room.assigningRoles || room.hostUid !== myUid) return room;
+    const playerIds = Object.keys(obj(room.players));
+    const pool = obj(room.cheatRolePool);
+    const assignments = obj(room.cheatAssignments);
+    if (!cheatAssignmentValid(pool, assignments, playerIds)) return room;
+    const expansions = obj(room.cheatEnabled);
+    const firstNames = shuffle(FIRST_NAMES).slice(0, playerIds.length);
+    const lastNames = shuffle(LAST_NAMES).slice(0, playerIds.length);
+    const secrets = {};
+    playerIds.forEach((id, i) => { secrets[id] = freshSecret(assignments[id], firstNames[i], lastNames[i]); });
+    finishDealingRoom(room, playerIds, secrets, expansions);
+    room.assigningRoles = false;
+    delete room.cheatRolePool;
+    delete room.cheatEnabled;
+    delete room.cheatAssignments;
     return room;
   });
 }

@@ -279,6 +279,18 @@ implemented.
   those are also enabled) — Misa has no effect in this case, since she
   needs a Follower to replace. If N is enabled, N simply takes the L
   slot — everything else about the split is unchanged.
+- **Playtest cheat mode**: creating a game with the exact custom room
+  code `04KI26` quietly turns on a host-only panel for manually picking
+  which player gets which role, instead of the normal random deal —
+  handy for setting up a specific scenario without redrawing until it
+  happens by chance. Nothing about it is visible to anyone but the host:
+  other players just see the ordinary "waiting for the host to start"
+  lobby text throughout, with no indication a cheat panel exists or is
+  open. The confirm button stays disabled until every player has a role
+  and the counts exactly match what the game's expansion settings
+  require (still resolving On/Off/Random the normal way first); a
+  Cancel button backs out to the ordinary lobby without dealing
+  anything.
 - **Voting**: majority is a strict majority of alive players who voted
   (more than half). Ties or no majority = nothing happens.
 - **Mission team size**: enforced by the app, driven by the round's
