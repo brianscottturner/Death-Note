@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 28;
+const APP_VERSION = 29;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -1060,20 +1060,24 @@ function applyWinCheck(room) {
 function renderDeathsPhase(room) {
   const players = obj(room.players);
   const deaths = Object.keys(obj(room.pendingDeaths));
+  const isHost = myUid === room.hostUid;
   let html = `<h2>Deaths Phase</h2><div class="card">`;
   if (deaths.length === 0) html += `<p>No one has died... yet.</p>`;
   else deaths.forEach(id => { html += `<p>Investigator ${players[id].label} has died.</p>`; });
   if (deaths.includes(room.watariPlayerId)) {
     html += `<p class="watari-alert">Watari has died... All data deletion.</p>`;
   }
-  html += `<button id="btn-deaths-continue" class="primary">Continue</button></div>`;
+  html += isHost
+    ? `<button id="btn-deaths-continue" class="primary">Continue</button>`
+    : `<p class="waiting">Waiting for the host to continue...</p>`;
+  html += `</div>`;
   el('round-content').innerHTML = html;
-  el('btn-deaths-continue').addEventListener('click', () => continueFromDeaths(myRoomCode));
+  if (isHost) el('btn-deaths-continue').addEventListener('click', () => continueFromDeaths(myRoomCode));
 }
 
 async function continueFromDeaths(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
-    if (!room || room.phase !== 'deaths') return room;
+    if (!room || room.phase !== 'deaths' || room.hostUid !== myUid) return room;
     room.pendingDeaths = null;
     const players = obj(room.players), secrets = obj(room.secrets);
     const eligible = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && !secrets[id].skipNextMission);
@@ -1097,6 +1101,7 @@ function renderMissionPhase(room) {
   const secrets = obj(room.secrets);
   const leader = players[m.leaderId];
   const isLeader = m.leaderId === myPlayerId;
+  const isHost = myUid === room.hostUid;
 
   let html = `<h2>Mission Phase</h2><div class="card">`;
   html += `<p><strong>Leading Investigator: ${leader ? leader.label + ' — ' + esc(leader.name) : '...'}</strong></p>`;
@@ -1176,7 +1181,9 @@ function renderMissionPhase(room) {
       } else {
         html += `<p><strong>Team REJECTED — a new Leading Investigator will be chosen for the same mission.</strong></p>`;
       }
-      html += `<button id="btn-approve-continue" class="primary">Continue</button>`;
+      html += isHost
+        ? `<button id="btn-approve-continue" class="primary">Continue</button>`
+        : `<p class="waiting">Waiting for the host to continue...</p>`;
     }
   } else if (m.step === 'play_cards') {
     const teamIds = Object.keys(obj(m.teamIds));
@@ -1220,7 +1227,9 @@ function renderMissionPhase(room) {
     html += m.result === 'success'
       ? `<p><strong>Mission SUCCEEDED! ${room.nActive ? 'N' : 'L'} +1</strong></p>`
       : `<p><strong>Mission FAILED! Kira +1</strong></p>`;
-    html += `<button id="btn-result-continue" class="primary">Continue</button>`;
+    html += isHost
+      ? `<button id="btn-result-continue" class="primary">Continue</button>`
+      : `<p class="waiting">Waiting for the host to continue...</p>`;
   } else if (m.step === 'redistribute') {
     const teamIds = Object.keys(obj(m.teamIds));
     const pool = obj(m.redistributePool);
@@ -1260,8 +1269,10 @@ function renderMissionPhase(room) {
     const shareTypeLabel = { first: 'first name', last: 'last name', both: 'name' }[m.shareType] || 'name';
 
     if (teamIds.length < 2) {
-      html += `<p class="hint">Only one player was on this mission — no names to share.</p>
-        <button id="btn-mission-done" class="primary">Continue</button>`;
+      html += `<p class="hint">Only one player was on this mission — no names to share.</p>`;
+      html += isHost
+        ? `<button id="btn-mission-done" class="primary">Continue</button>`
+        : `<p class="waiting">Waiting for the host to continue...</p>`;
     } else if (!m.sharePicksResolved) {
       if (onMission) {
         const submitted = obj(m.sharePickSubmitted);
@@ -1307,7 +1318,9 @@ function renderMissionPhase(room) {
       } else {
         html += `<p class="hint">Players on the mission privately chose who to share their ${shareTypeLabel}s with.</p>`;
       }
-      html += `<button id="btn-mission-done" class="primary">Continue</button>`;
+      html += isHost
+        ? `<button id="btn-mission-done" class="primary">Continue</button>`
+        : `<p class="waiting">Waiting for the host to continue...</p>`;
     }
   }
   html += `</div>`;
@@ -1453,7 +1466,7 @@ async function maybeResolveTeamApproval(room, code) {
 
 async function continueFromTeamApproval(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
-    if (!room || room.phase !== 'mission' || room.mission.step !== 'approve' || !room.mission.approvalResolved) return room;
+    if (!room || room.phase !== 'mission' || room.mission.step !== 'approve' || !room.mission.approvalResolved || room.hostUid !== myUid) return room;
     if (room.mission.approved) {
       room.mission.step = 'play_cards';
       room.mission.cardsPlayed = {};
@@ -1579,7 +1592,7 @@ async function maybeResolvePlayedCards(room, code) {
 // Draws (team size + 1) Supply Cards for the leader to hand back out.
 async function continueFromMissionResult(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
-    if (!room || room.phase !== 'mission' || room.mission.step !== 'result') return room;
+    if (!room || room.phase !== 'mission' || room.mission.step !== 'result' || room.hostUid !== myUid) return room;
     const teamIds = Object.keys(obj(room.mission.teamIds));
     const drawn = drawSupplyCards(room, teamIds.length + 1);
     room.mission.redistributePool = {};
@@ -1695,7 +1708,7 @@ async function maybeResolveSharePicks(room, code) {
 
 async function continueFromMissionShare(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
-    if (!room || room.phase !== 'mission' || room.mission.step !== 'share') return room;
+    if (!room || room.phase !== 'mission' || room.mission.step !== 'share' || room.hostUid !== myUid) return room;
     if (Object.keys(obj(room.mission.teamIds)).length >= 2 && !room.mission.sharePicksResolved) return room;
     const secrets = obj(room.secrets);
     Object.keys(secrets).forEach(id => { if (secrets[id].skipNextMission) secrets[id].skipNextMission = false; });
@@ -1713,6 +1726,7 @@ function renderVotingPhase(room) {
   const voting = obj(room.voting);
   const votes = obj(voting.votes);
   const aliveIds = Object.keys(players).filter(id => secrets[id] && secrets[id].alive);
+  const isHost = myUid === room.hostUid;
 
   let html = `<h2>Voting Phase</h2><div class="card">`;
 
@@ -1766,7 +1780,9 @@ function renderVotingPhase(room) {
         : `<p class="hint">${arrested.label} will sit out the next mission and next Information Phase.</p>`;
     }
     if (!tieBreakPending) {
-      html += `<button id="btn-voting-continue" class="primary">Continue</button>`;
+      html += isHost
+        ? `<button id="btn-voting-continue" class="primary">Continue</button>`
+        : `<p class="waiting">Waiting for the host to continue...</p>`;
     }
   }
   html += `</div>`;
@@ -1988,7 +2004,7 @@ async function submitTieBreak(code, chosenId) {
 
 async function continueFromVotingResult(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
-    if (!room || room.phase !== 'voting' || !room.voting.resolved) return room;
+    if (!room || room.phase !== 'voting' || !room.voting.resolved || room.hostUid !== myUid) return room;
     if (room.voting.tieBreakPending && !room.voting.tieBreakDone) return room;
     if (room.endgame && room.endgame.active) return room;
     // If X-Kira's one-time recruitment offer was available this round but never

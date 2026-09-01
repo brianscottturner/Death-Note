@@ -319,6 +319,17 @@ implemented.
   Supply Cards need no overlay since each color's value never changes.
 - **Death reveal**: revealing a death does not reveal the dead player's
   secret role, only that they died.
+- **Phase-advance "Continue" buttons**: every button that moves the whole
+  table forward (after Deaths, after a team vote resolves, after a
+  mission result, after name-sharing resolves, after a Voting Phase
+  resolves) is host-only — everyone else sees a plain "Waiting for the
+  host to continue..." message instead. Earlier, any player's phone
+  showed that button and any tap by anyone advanced the round for the
+  whole table, which made it easy for two people to both reach for it at
+  once. Buttons for a specific role's own action (Kira finishing the
+  Information Phase, N accusing, Mello attempting a steal, the mission
+  leader redistributing cards) are unaffected — those still belong to
+  whoever holds that role, not the host.
 - **Name-sharing picks**: each player privately chooses which teammate
   to share their own name with, offered only teammates who don't
   already know that name part — the app never assigns pairings. Picks
