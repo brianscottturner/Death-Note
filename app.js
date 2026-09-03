@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 31;
+const APP_VERSION = 32;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -2407,6 +2407,21 @@ async function submitEndgameGuess(code, whoId, first, last) {
 
 /* ---------------- INFORMATION PHASE ---------------- */
 
+// L's suspect list always includes Kira plus a handful of random others
+// drawn from the remaining alive pool (excluding L, Kira, and Watari).
+// With 7 alive players that pool is already so small that the traditional
+// 4 (Kira + 3 others) would hand L almost everyone -- so at 7 or fewer
+// alive it's 3 total (Kira + 2 others) instead, and 4 (Kira + 3) at 8+.
+// Never asks for more "others" than the pool actually has, so a late-game
+// pool shrunk by deaths still produces a valid (if smaller) list.
+function lSuspectPoolAndCount(room) {
+  const secrets = obj(room.secrets), players = obj(room.players);
+  const aliveCount = Object.values(secrets).filter(s => s.alive).length;
+  const pool = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && id !== room.lPlayerId && id !== room.kiraPlayerId && id !== room.watariPlayerId);
+  const othersWanted = Math.min(aliveCount <= 7 ? 2 : 3, pool.length);
+  return { pool, othersWanted, total: othersWanted + 1 };
+}
+
 function renderInformationPhase(room) {
   const players = obj(room.players);
   const secrets = obj(room.secrets);
@@ -2471,16 +2486,16 @@ function renderInformationPhase(room) {
     const suspectIds = Object.keys(obj(info.lSuspects));
     if (info.lDone) {
       if (suspectIds.length > 0) {
-        html += `<p><strong>4 Suspects — one of them is Kira:</strong></p>`;
+        html += `<p><strong>${suspectIds.length} Suspects — one of them is Kira:</strong></p>`;
         suspectIds.forEach(id => { html += `<div class="player-row"><span>${players[id].label} — ${esc(players[id].name)}</span></div>`; });
         html += `<p class="hint">Done. Waiting for Kira's team to finish...</p>`;
       } else {
         html += `<p class="hint">You're sitting out this Information Phase.</p>`;
       }
     } else if (suspectIds.length === 0) {
-      html += `<button id="btn-l-reveal" class="primary">Reveal My 4 Suspects</button>`;
+      html += `<button id="btn-l-reveal" class="primary">Reveal My ${lSuspectPoolAndCount(room).total} Suspects</button>`;
     } else {
-      html += `<p><strong>4 Suspects — one of them is Kira:</strong></p>`;
+      html += `<p><strong>${suspectIds.length} Suspects — one of them is Kira:</strong></p>`;
       suspectIds.forEach(id => { html += `<div class="player-row"><span>${players[id].label} — ${esc(players[id].name)}</span></div>`; });
       html += `<p class="hint">Kira's Follower has an equal chance of appearing here as any other Investigator.</p>
         <button id="btn-l-done" class="primary">Done</button>`;
@@ -2687,13 +2702,12 @@ async function lRevealSuspects(code) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || room.phase !== 'information' || room.info.lDone) return room;
     if (Object.keys(obj(room.info.lSuspects)).length > 0) return room;
-    const players = obj(room.players), secrets = obj(room.secrets);
     const kiraId = room.kiraPlayerId;
-    const pool = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && id !== room.lPlayerId && id !== kiraId && id !== room.watariPlayerId);
-    const others = shuffle(pool).slice(0, 3);
-    const four = shuffle([kiraId, ...others]);
+    const { pool, othersWanted } = lSuspectPoolAndCount(room);
+    const others = shuffle(pool).slice(0, othersWanted);
+    const suspects = shuffle([kiraId, ...others]);
     room.info.lSuspects = {};
-    four.forEach(id => { room.info.lSuspects[id] = true; });
+    suspects.forEach(id => { room.info.lSuspects[id] = true; });
     return room;
   });
 }

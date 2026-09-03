@@ -130,8 +130,14 @@ Each round has four phases, in order:
 4. **Information** — L (if not sitting out) and Kira's team act **at the
    same time**, each on their own device, rather than waiting on each
    other — the round only advances once both sides are finished. L (if
-   acting this round) is shown 4 suspects, one of whom is truly Kira, and
-   taps Done when finished reviewing them. Meanwhile Kira and the Follower have **2 minutes** to strategize — it
+   acting this round) is shown a suspect list, one of whom is truly
+   Kira, and taps Done when finished reviewing them — **4 suspects**
+   (Kira + 3 others) once 8+ players are alive, but only **3** (Kira +
+   2 others) once the game is down to 7 alive, so L doesn't end up
+   knowing nearly everyone in a small game. If deaths ever shrink the
+   eligible pool (alive, not L, not Kira, not Watari) below even that,
+   the list just shrinks to fit whoever's actually left rather than
+   padding it out. Meanwhile Kira and the Follower have **2 minutes** to strategize — it
    runs silently in the background rather than as a live-updating
    countdown on screen (that turned out to be disruptive during real
    playtesting), so all anyone sees is a single "30 seconds left" notice
@@ -248,8 +254,8 @@ implemented.
   arrested, and they're eliminated too (a neutral has no round to "sit
   out"). Combines freely with Watari or X-Kira.
 - **Special Provisions for Kira — N**: replaces L, with the same win
-  conditions but a different investigative tool. Instead of 4 suspects
-  shown every round, N privately accuses one player per Information
+  conditions but a different investigative tool. Instead of a suspect
+  list shown every round, N privately accuses one player per Information
   Phase: an innocent is **cleared for good** (permanent, cumulative,
   shown as a running list on N's own phone); Kira or the Follower gives
   **no confirmation either way** — silence is itself a clue, since it
