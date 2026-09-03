@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 30;
+const APP_VERSION = 31;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -26,7 +26,7 @@ function el(id) { return document.getElementById(id); }
 const EVENT_CARD_THRESHOLDS = [2, 4, 5, 6, 8];
 const EVENT_CARDS = {
   '2': { name: 'Kira Video Messages', desc: () => "Every Supply Card played on this round's mission is worth a flat +1 toward the total, no matter its color." },
-  '4': { name: 'Shinigami Eyes', desc: () => "The team votes on who they trust most. That player privately picks one other player and learns half their real name — who they picked stays private." },
+  '4': { name: 'Shinigami Eyes', desc: () => "The team votes on who they trust most. That player privately picks one other player and instantly learns their full real name — who they picked stays private." },
   '5': { name: 'Voluntary Confinement', desc: () => "The group votes to lock up 2 players — same as an arrest (sits out the next mission and Information Phase), but no name is ever revealed, and it doesn't end the game even if one of them is Kira." },
   '6': { name: 'Lint L Taylor Trap', desc: (room) => `This Information Phase, if Kira's team doesn't successfully kill someone, ${room.nActive ? 'N' : "L"}'s team gets +2 points.` },
   '8': { name: 'Vindicating Evidence', desc: () => "The next Voting Phase has no Skip option — if no majority forms, whoever got the most votes is arrested anyway." },
@@ -1216,21 +1216,18 @@ function renderPendingEventCardHtml(room, key, isHost) {
       html += `<p><strong>${winner ? `${winner.label} — ${esc(winner.name)}` : '?'} received the Shinigami Eyes.</strong></p>`;
       if (state.winnerId === myPlayerId && !state.eyesResult) {
         const eyesTargets = aliveIds.filter(id => id !== myPlayerId);
-        html += `<div class="card"><p class="hint">Privately choose who to look at, and which part of their name to learn.</p>`;
+        html += `<div class="card"><p class="hint">Privately choose who to look at — you'll learn their full real name.</p>`;
         if (eyesTargets.length === 0) {
           html += `<p class="hint">No valid targets remain.</p>`;
         } else {
           html += `<label>Look at</label>
             <select id="event-eyes-target">${eyesTargets.map(id => `<option value="${id}">${players[id].label} — ${esc(players[id].name)}</option>`).join('')}</select>
-            <label>Which part of their name?</label>
-            <select id="event-eyes-part"><option value="first">First name</option><option value="last">Last name</option></select>
             <button id="btn-event-eyes-submit" class="danger">Use Shinigami Eyes</button>`;
         }
         html += `</div>`;
       } else if (state.winnerId === myPlayerId && state.eyesResult) {
         const t = players[state.eyesResult.targetId];
-        const partLabel = state.eyesResult.part === 'first' ? 'first name' : 'last name';
-        html += `<p><strong>${t ? `${t.label} — ${esc(t.name)}` : '?'}'s ${partLabel}: ${esc(state.eyesResult.value)}</strong></p>`;
+        html += `<p><strong>${t ? `${t.label} — ${esc(t.name)}` : '?'}'s full name: ${esc(state.eyesResult.firstName)} ${esc(state.eyesResult.lastName)}</strong></p>`;
       } else {
         html += `<p class="hint">Who they chose to look at, and what they learned, is private.</p>`;
       }
@@ -1279,7 +1276,7 @@ function wirePendingEventCardListeners(key, isHost) {
   });
   if (key === '4') {
     const submitBtn = el('btn-event-eyes-submit');
-    if (submitBtn) submitBtn.addEventListener('click', () => submitEventEyesGuess(myRoomCode, el('event-eyes-target').value, el('event-eyes-part').value));
+    if (submitBtn) submitBtn.addEventListener('click', () => submitEventEyesGuess(myRoomCode, el('event-eyes-target').value));
   }
   if (isHost) {
     const dismissBtn = el('btn-event-dismiss');
@@ -1351,14 +1348,14 @@ async function maybeResolveEventCardVote(room, code, cardKey) {
   });
 }
 
-async function submitEventEyesGuess(code, targetId, part) {
+async function submitEventEyesGuess(code, targetId) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || room.phase !== 'deaths' || !room.eventCardsEnabled) return room;
     const state = obj(obj(room.eventCardStates)['4']);
     if (!state.resolved || state.eyesResult || state.winnerId !== myPlayerId) return room;
     const target = obj(room.secrets)[targetId];
     if (!target || targetId === myPlayerId) return room;
-    room.eventCardStates['4'].eyesResult = { targetId, part, value: part === 'first' ? target.firstName : target.lastName };
+    room.eventCardStates['4'].eyesResult = { targetId, firstName: target.firstName, lastName: target.lastName };
     return room;
   });
 }

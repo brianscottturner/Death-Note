@@ -289,9 +289,10 @@ implemented.
   - **#4 — Shinigami Eyes**: the whole team votes on who they trust
     most (highest vote count wins, ties broken randomly) — no majority
     required, just plurality. The winner then privately picks one other
-    player and one part of their name (first or last) to instantly
-    learn, exactly like Misa's power but available to anyone. Who they
-    looked at, and what they learned, is never shown to anyone else.
+    player and instantly learns their **full real name** (first and
+    last together, unlike Misa's power which only ever reveals one
+    part). Who they looked at, and what they learned, is never shown to
+    anyone else.
   - **#5 — Voluntary Confinement**: the whole team votes for one player
     each (again by plurality, ties broken randomly); the two
     highest-voted are locked up — same practical consequence as an
