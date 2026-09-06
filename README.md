@@ -70,9 +70,6 @@ so the on-screen label always matches what's actually being served.
 Each round has four phases, in order:
 
 1. **Deaths** — reveals anyone killed during the previous Information Phase.
-   If the Event Cards house rule is on, this is also where any newly
-   triggered Event Card is revealed and (for the two that need one)
-   resolved — see Event Cards below.
 2. **Missions** — the app randomly picks a Leading Investigator and draws
    two Mission Cards from a shuffled digital deck (Black or White,
    sized to the game's player count). The leader picks one of the two
@@ -278,16 +275,21 @@ implemented.
 - **House Rules — Event Cards**: a deck of 5 narrative twists, each keyed
   to a specific L/N score (**2, 4, 5, 6, 8**) — the moment that many
   points is reached, the matching card fires **automatically and
-  exactly once**, revealed at the start of the next Deaths Phase (never
-  mid-round, even though the score itself can cross the threshold
-  earlier — during a mission or an Information Phase). If a single jump
-  crosses more than one untriggered threshold at once (Card #6's own
-  +2 penalty can do this), every newly-crossed card queues up and gets
-  revealed one at a time, lowest-numbered first, before the round can
-  continue. Uses the same three-way toggle as every other expansion: On
-  = every card is live for the whole game; Off = none of them exist;
-  Random = a single coin flip at deal time decides whether the whole
-  deck is in play, never announced either way.
+  exactly once**, revealed to everyone the instant the threshold is
+  actually crossed, not whenever the next Deaths Phase happens to come
+  around. In practice that's one of two exact moments: right after the
+  Mission Phase ends (a mission's own success is the normal way L's/N's
+  score moves), or right after the Information Phase ends (the only other
+  way it can move, via Card #6's own +2 penalty below). Either way the
+  reveal interrupts whatever phase would normally come next — Voting or
+  Deaths — until it's dismissed. If a single jump crosses more than one
+  untriggered threshold at once (Card #6's own +2 penalty can do this),
+  every newly-crossed card queues up and gets revealed one at a time,
+  lowest-numbered first, before the round can continue. Uses the same
+  three-way toggle as every other expansion: On = every card is live for
+  the whole game; Off = none of them exist; Random = a single coin flip
+  at deal time decides whether the whole deck is in play, never
+  announced either way.
   - **#2 — Kira Video Messages**: for the mission that follows, every
     Supply Card played counts as a flat **+1**, no matter its color —
     the normal +2 (matches the Mission Card's color) / −2 (doesn't

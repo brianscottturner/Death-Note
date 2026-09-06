@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 32;
+const APP_VERSION = 33;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -939,6 +939,12 @@ function renderRound(room) {
   initKiraChatPanel();
   updateKiraChatPanel(room);
   if (room.endgame && room.endgame.active && !room.endgame.resolved) return renderEndgame(room);
+  // Event Cards fire the instant L's/N's score actually crosses a threshold
+  // (right after a mission resolves, or right after Card #6's own penalty
+  // lands at the end of an Information Phase) -- not whenever the Deaths
+  // Phase after that happens to come around. So this interrupts whatever
+  // phase is technically current until every pending card is dismissed.
+  if (room.eventCardsEnabled && lowestPendingEventCardKey(room)) return renderEventCardReveal(room);
   if (room.phase === 'deaths') return renderDeathsPhase(room);
   if (room.phase === 'mission') return renderMissionPhase(room);
   if (room.phase === 'voting') return renderVotingPhase(room);
@@ -1130,24 +1136,27 @@ function renderDeathsPhase(room) {
   if (room.eventKillCheckPenalty) {
     html += `<p class="hint">🎴 Lint L Taylor Trap: Kira's team didn't successfully kill anyone last Information Phase — ${room.nActive ? 'N' : 'L'}'s team gained +2 points.</p>`;
   }
-
-  const pendingKey = room.eventCardsEnabled ? lowestPendingEventCardKey(room) : null;
-  if (pendingKey) {
-    html += renderPendingEventCardHtml(room, pendingKey, isHost);
-  } else {
-    html += isHost
-      ? `<button id="btn-deaths-continue" class="primary">Continue</button>`
-      : `<p class="waiting">Waiting for the host to continue...</p>`;
-  }
+  html += isHost
+    ? `<button id="btn-deaths-continue" class="primary">Continue</button>`
+    : `<p class="waiting">Waiting for the host to continue...</p>`;
   html += `</div>`;
   el('round-content').innerHTML = html;
+  if (isHost) el('btn-deaths-continue').addEventListener('click', () => continueFromDeaths(myRoomCode));
+}
 
-  if (!pendingKey) {
-    if (isHost) el('btn-deaths-continue').addEventListener('click', () => continueFromDeaths(myRoomCode));
-    return;
-  }
-  wirePendingEventCardListeners(pendingKey, isHost);
-  if (pendingKey === '4' || pendingKey === '5') maybeResolveEventCardVote(room, myRoomCode, pendingKey);
+// Interrupts whatever phase is technically current the instant a threshold
+// is crossed (see the dispatch note in renderRound) -- not part of any
+// named phase itself, so it gets its own screen rather than living inside
+// the Deaths Phase render.
+function renderEventCardReveal(room) {
+  const isHost = myUid === room.hostUid;
+  const key = lowestPendingEventCardKey(room);
+  let html = `<h2>Event Card Triggered</h2><div class="card">`;
+  html += renderPendingEventCardHtml(room, key, isHost);
+  html += `</div>`;
+  el('round-content').innerHTML = html;
+  wirePendingEventCardListeners(key, isHost);
+  if (key === '4' || key === '5') maybeResolveEventCardVote(room, myRoomCode, key);
 }
 
 async function continueFromDeaths(code) {
@@ -1178,7 +1187,7 @@ async function continueFromDeaths(code) {
 // can move on.
 function renderPendingEventCardHtml(room, key, isHost) {
   const info = EVENT_CARDS[key];
-  let html = `<hr><div class="role-box"><div class="role-name">Event Card #${key}: ${info.name}</div><div class="role-desc">${info.desc(room)}</div></div>`;
+  let html = `<div class="role-box"><div class="role-name">Event Card #${key}: ${info.name}</div><div class="role-desc">${info.desc(room)}</div></div>`;
   if (key === '2' || key === '6' || key === '8') {
     html += isHost
       ? `<button id="btn-event-dismiss" class="primary" data-key="${key}">Continue</button>`
@@ -1286,7 +1295,7 @@ function wirePendingEventCardListeners(key, isHost) {
 
 async function castEventCardVote(code, cardKey, targetId) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
-    if (!room || room.phase !== 'deaths' || !room.eventCardsEnabled) return room;
+    if (!room || !room.eventCardsEnabled) return room;
     if (!['4', '5'].includes(cardKey) || lowestPendingEventCardKey(room) !== cardKey) return room;
     const secrets = obj(room.secrets);
     if (!secrets[myPlayerId] || !secrets[myPlayerId].alive) return room;
@@ -1302,7 +1311,7 @@ async function castEventCardVote(code, cardKey, targetId) {
 }
 
 async function maybeResolveEventCardVote(room, code, cardKey) {
-  if (room.phase !== 'deaths' || !room.eventCardsEnabled) return;
+  if (!room.eventCardsEnabled) return;
   if (lowestPendingEventCardKey(room) !== cardKey) return;
   const state = obj(obj(room.eventCardStates)[cardKey]);
   if (state.resolved) return;
@@ -1312,7 +1321,7 @@ async function maybeResolveEventCardVote(room, code, cardKey) {
   if (!aliveIds.every(id => votes[id] !== undefined)) return;
 
   await runTransaction(ref(db, `rooms/${code}`), (r) => {
-    if (!r || r.phase !== 'deaths' || !r.eventCardsEnabled) return r;
+    if (!r || !r.eventCardsEnabled) return r;
     if (lowestPendingEventCardKey(r) !== cardKey) return r;
     const s = obj(r.secrets), p = obj(r.players);
     const alive2 = Object.keys(p).filter(id => s[id] && s[id].alive);
@@ -1350,7 +1359,7 @@ async function maybeResolveEventCardVote(room, code, cardKey) {
 
 async function submitEventEyesGuess(code, targetId) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
-    if (!room || room.phase !== 'deaths' || !room.eventCardsEnabled) return room;
+    if (!room || !room.eventCardsEnabled) return room;
     const state = obj(obj(room.eventCardStates)['4']);
     if (!state.resolved || state.eyesResult || state.winnerId !== myPlayerId) return room;
     const target = obj(room.secrets)[targetId];
@@ -1362,7 +1371,7 @@ async function submitEventEyesGuess(code, targetId) {
 
 async function dismissPendingEventCard(code, cardKey) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
-    if (!room || room.phase !== 'deaths' || room.hostUid !== myUid) return room;
+    if (!room || !room.eventCardsEnabled || room.hostUid !== myUid) return room;
     if (lowestPendingEventCardKey(room) !== cardKey) return room;
     if (cardKey === '4' || cardKey === '5') {
       const state = obj(obj(room.eventCardStates)[cardKey]);
@@ -2015,6 +2024,11 @@ async function continueFromMissionShare(code) {
     Object.keys(secrets).forEach(id => { if (secrets[id].skipNextMission) secrets[id].skipNextMission = false; });
     room.phase = 'voting';
     room.voting = { resolved: false };
+    // A successful mission is the only way lScore changes during the
+    // Mission Phase -- check for newly-crossed Event Card thresholds right
+    // here, at the moment the phase actually ends, rather than waiting for
+    // the Deaths Phase that eventually follows Voting and Information.
+    if (room.eventCardsEnabled) queueNewlyTriggeredEventCards(room);
     return room;
   });
 }
@@ -2676,8 +2690,11 @@ async function maybeAdvanceFromInfo(room, code) {
     const i = obj(r.info);
     if (!i.lDone || !i.kiraDone || (melloStillNeedsToAct(r) && !i.melloDone)) return r;
 
-    // Card #6 (Lint L Taylor Trap): checked here, against the phase that's
-    // about to end, before r.info gets reset for the next round.
+    // Card #6 (Lint L Taylor Trap) is the only way lScore can change during
+    // an Information Phase -- checked here, right as that phase ends and
+    // before r.info gets reset, so any newly-crossed threshold (queued a
+    // few lines down) is caught and revealed immediately, same as a
+    // mission-driven crossing is caught the moment Mission Phase ends.
     if (r.eventCardsEnabled && r.eventForceKillActive) {
       if (!((i.killsThisPhase || 0) > 0)) {
         r.lScore = (r.lScore || 0) + 2;
