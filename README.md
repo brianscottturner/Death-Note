@@ -70,7 +70,8 @@ so the on-screen label always matches what's actually being served.
 Each round has four phases, in order:
 
 1. **Deaths** — reveals anyone killed during the previous Information Phase.
-2. **Missions** — the app randomly picks a Leading Investigator and draws
+2. **Missions** — the app picks a Leading Investigator (randomly, but fairly
+   — see below) and draws
    two Mission Cards from a shuffled digital deck (Black or White,
    sized to the game's player count). The leader picks one of the two
    to play this round — the other is discarded, permanently, not
@@ -87,7 +88,13 @@ Each round has four phases, in order:
    Mission Card, same requirements, fresh team — for another attempt.
    Reject a *second* team on the same card and it auto-fails outright
    (Kira's team scores the point as normal) rather than trying a third
-   time. Once a team is approved, every player on the mission secretly
+   time. Leader selection — both the once-per-round pick and any
+   same-round reroll after a rejected team — draws only from whoever
+   has led the fewest times so far in the game, breaking ties randomly.
+   In practice that means nobody gets a second turn as leader until
+   everyone still eligible has had a first, instead of a flat
+   coin-flip letting one player get picked far more often than others
+   purely by chance. Once a team is approved, every player on the mission secretly
    plays one or more Supply Cards from their own hand face-down (at
    least one each, unless their hand is empty) into the mission — Gray
    always helps the running total, and Black/White help when they match

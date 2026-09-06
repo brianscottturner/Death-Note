@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 33;
+const APP_VERSION = 34;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -219,6 +219,20 @@ function validShareTargets(teamIds, knownNames, shareType, myId) {
   return teamIds.filter(t => t !== myId && !alreadyKnowsName(knownNames, t, myId, shareType));
 }
 function obj(x) { return x || {}; }
+// Picks a Leading Investigator fairly across the game: narrows the eligible
+// pool down to whoever has led the fewest times so far (room.leaderCounts),
+// then breaks any tie with Math.random. This keeps the choice random while
+// preventing the same player from being picked over and over by chance --
+// nobody gets a second turn until everyone still eligible has had a first.
+function pickFairLeader(room, eligible) {
+  const counts = obj(room.leaderCounts);
+  const minCount = Math.min(...eligible.map(id => counts[id] || 0));
+  const leastLed = eligible.filter(id => (counts[id] || 0) === minCount);
+  const leaderId = leastLed[Math.floor(Math.random() * leastLed.length)];
+  room.leaderCounts = counts;
+  room.leaderCounts[leaderId] = minCount + 1;
+  return leaderId;
+}
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -699,6 +713,7 @@ function finishDealingRoom(room, playerIds, secrets, expansions) {
   room.eventCardsEnabled = !!eventCardsEnabled;
   room.triggeredEventCards = {};
   room.pendingEventCards = {};
+  room.leaderCounts = {};
   const missionDeck = buildMissionDeck(playerIds.length);
   room.missionDeck = {};
   missionDeck.forEach((c, i) => { room.missionDeck[i] = c; });
@@ -1167,7 +1182,7 @@ async function continueFromDeaths(code) {
     room.eventKillCheckPenalty = false;
     const players = obj(room.players), secrets = obj(room.secrets);
     const eligible = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && !secrets[id].skipNextMission);
-    const leaderId = eligible[Math.floor(Math.random() * eligible.length)];
+    const leaderId = pickFairLeader(room, eligible);
     // Two cards are drawn and offered to the leader -- the unpicked one is
     // discarded (never returned to the deck). Once chosen, the card is fixed
     // for the round -- rejected team proposals (the approval-vote retry) pick
@@ -1788,7 +1803,7 @@ async function continueFromTeamApproval(code) {
     if (eligible.length === 0) {
       eligible = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && !secrets[id].skipNextMission);
     }
-    const newLeaderId = eligible[Math.floor(Math.random() * eligible.length)];
+    const newLeaderId = pickFairLeader(room, eligible);
     room.mission.leaderId = newLeaderId;
     room.mission.teamIds = { [newLeaderId]: true };
     room.mission.step = 'team';
