@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Death Note: Kira's Game</title>
+<title>Blacklist: Berlin, 1962</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IM+Fell+English+SC&display=swap">
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Special+Elite&display=swap">
+<link rel="stylesheet" href="style.css?v=1">
 </head>
 <body>
 <div id="app">
 
   <!-- LANDING: CREATE OR JOIN -->
   <section id="screen-landing" class="screen">
-    <h1 class="title">DEATH NOTE<br><span class="subtitle">Kira's Game</span></h1>
+    <h1 class="title">BLACKLIST<br><span class="subtitle">Berlin, 1962</span></h1>
     <div class="card">
       <div id="landing-error" class="error hidden"></div>
       <p id="landing-connecting" class="hint">Connecting...</p>
@@ -28,7 +28,7 @@
 
       <hr>
       <label for="landing-code">Room code</label>
-      <input type="text" id="landing-code" placeholder="e.g. KIRA42" maxlength="12" style="text-transform:uppercase">
+      <input type="text" id="landing-code" placeholder="e.g. MOLE42" maxlength="12" style="text-transform:uppercase">
       <button id="btn-join-game" class="secondary" disabled>Join Game</button>
       <p id="app-version" class="hint" style="text-align:center;opacity:0.5;margin-top:1em;margin-bottom:0;"></p>
     </div>
@@ -48,13 +48,13 @@
   <section id="screen-round" class="screen hidden">
     <header id="round-header">
       <div id="round-label">Round 1</div>
-      <div id="score-label">L: 0 &nbsp;|&nbsp; Kira: 0</div>
+      <div id="score-label">Spymaster: 0 &nbsp;|&nbsp; Mole: 0</div>
     </header>
     <div id="round-content"></div>
     <div id="kira-chat-panel" class="card hidden">
-      <button id="btn-kira-chat-toggle" class="secondary" type="button">💬 <span id="kira-chat-toggle-label">Kira Team Chat</span></button>
+      <button id="btn-kira-chat-toggle" class="secondary" type="button">💬 <span id="kira-chat-toggle-label">Mole Team Chat</span></button>
       <div id="kira-chat-body" class="hidden">
-        <p class="hint">Visible only to you and your Kira-team partner, for the whole game — not just the Information Phase.</p>
+        <p class="hint">Visible only to you and your Mole-team partner, for the whole game — not just the Intelligence Phase.</p>
         <p id="kira-chat-restricted-hint" class="hint hidden"></p>
         <div class="chat-log" id="kira-chat-log"></div>
         <div class="chat-input-row">
@@ -67,7 +67,7 @@
       <button id="btn-notes-toggle" class="secondary" type="button">📝 My Private Notes</button>
       <div id="notes-body" class="hidden">
         <p class="hint">Only you can see this. Jot down suspicions, plans, names people shared — it's saved automatically and stays for the whole game.</p>
-        <p id="notes-locked-hint" class="hint hidden">You're sitting out this Information Phase — notes are unavailable until it ends.</p>
+        <p id="notes-locked-hint" class="hint hidden">You're sitting out this Intelligence Phase — notes are unavailable until it ends.</p>
         <textarea id="notes-textarea" placeholder="Suspicions, plans, names people shared with you..." maxlength="2000"></textarea>
         <div id="notes-saved-indicator"></div>
       </div>
@@ -81,6 +81,6 @@
 
   <div id="toast" class="toast hidden"></div>
 </div>
-<script type="module" src="app.js?v=36"></script>
+<script type="module" src="app.js?v=1"></script>
 </body>
 </html>

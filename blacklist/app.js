@@ -1,14 +1,16 @@
 import {
   auth, db, signInAnonymously, onAuthStateChanged,
   ref, get, set, update, onValue, runTransaction
-} from "./firebase-init.js";
+} from "../firebase-init.js";
 
-const FIRST_NAMES = ["Harry", "Ron", "Katniss", "Peeta", "Percy", "Sherlock", "Peter", "Tony", "Bruce", "Clark"];
-const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holmes", "Parker", "Stark", "Wayne", "Kent"];
+const FIRST_NAMES = ["Kim", "Rudolf", "Gary", "Oleg", "Ethel", "Nikita", "John", "Yuri", "Fidel", "Willy"];
+const LAST_NAMES = ["Philby", "Abel", "Powers", "Penkovsky", "Rosenberg", "Khrushchev", "Kennedy", "Gagarin", "Castro", "Brandt"];
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 36;
+const APP_VERSION = 1;
+
+function cap(str) { return str.charAt(0).toUpperCase() + str.slice(1); }
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -25,11 +27,11 @@ function el(id) { return document.getElementById(id); }
 // the round where the threshold was actually crossed, never mid-round).
 const EVENT_CARD_THRESHOLDS = [2, 4, 5, 6, 8];
 const EVENT_CARDS = {
-  '2': { name: 'Kira Video Messages', desc: () => "Every Supply Card played on this round's mission is worth a flat +1 toward the total, no matter its color." },
-  '4': { name: 'Shinigami Eyes', desc: () => "The team votes on who they trust most. That player privately picks one other player and instantly learns their full real name — who they picked stays private." },
-  '5': { name: 'Voluntary Confinement', desc: () => "The group votes to lock up 2 players — same as an arrest (sits out the next mission and Information Phase), but no name is ever revealed, and it doesn't end the game even if one of them is Kira." },
-  '6': { name: 'Lint L Taylor Trap', desc: (room) => `This Information Phase, if Kira's team doesn't successfully kill someone, ${room.nActive ? 'N' : "L"}'s team gets +2 points.` },
-  '8': { name: 'Vindicating Evidence', desc: () => "The next Voting Phase has no Skip option — if no majority forms, whoever got the most votes is arrested anyway." },
+  '2': { name: 'Propaganda Broadcast', desc: () => "Every Supply Card played on this round's mission is worth a flat +1 toward the total, no matter its color." },
+  '4': { name: "Defector's Tip", desc: () => "The team votes on who they trust most. That player privately picks one other player and instantly learns their full real name — who they picked stays private." },
+  '5': { name: 'Safe House', desc: () => "The group votes to lock up 2 players — same as an arrest (sits out the next mission and Intelligence Phase), but no name is ever revealed, and it doesn't end the game even if one of them is the Mole." },
+  '6': { name: 'The Decoy', desc: (room) => `This Intelligence Phase, if the Mole's team doesn't successfully kill someone, ${room.nActive ? 'the Interrogator' : 'the Spymaster'}'s team gets +2 points.` },
+  '8': { name: 'Smoking Gun', desc: () => "The next Voting Phase has no Skip option — if no majority forms, whoever got the most votes is arrested anyway." },
 };
 
 // Tallies one-target-each votes, ignoring anyone who hasn't voted.
@@ -192,14 +194,20 @@ function missionCardFaceHtml(card, { tag = 'div', extraClass = '', extraAttrs = 
   const colorClass = card.color === 'white' ? 'mission-white' : 'mission-black';
   const cls = `card-face ${colorClass} ${extraClass}`.trim();
   return `<${tag} class="${cls}" ${extraAttrs}>
-    <span class="field field-investigators">${card.teamSize}</span>
-    <span class="field field-points">${card.points}</span>
-    <span class="field field-name">${shareLabel}</span>
+    <span class="cf-stamp">Top Secret</span>
+    <span class="cf-title">Mission</span>
+    <span class="cf-row"><span>Agents</span><b>${card.teamSize}</b></span>
+    <span class="cf-row"><span>Points</span><b>${card.points}</b></span>
+    <span class="cf-row"><span>Identity</span><b>${shareLabel}</b></span>
   </${tag}>`;
 }
 function supplyCardFaceHtml(color, { tag = 'div', extraClass = '', extraAttrs = '' } = {}) {
   const cls = `card-face supply-${color} ${extraClass}`.trim();
-  return `<${tag} class="${cls}" ${extraAttrs}></${tag}>`;
+  const value = color === 'gray' ? 1 : 2;
+  return `<${tag} class="${cls}" ${extraAttrs}>
+    <span class="cf-title">Supply</span>
+    <span class="cf-value">${value}</span>
+  </${tag}>`;
 }
 el('app-version').textContent = 'v' + APP_VERSION;
 
@@ -260,10 +268,10 @@ let currentRoomData = null;
 let roomUnsub = null;
 
 function saveSession(code) {
-  localStorage.setItem('dn_session', JSON.stringify({ code }));
+  localStorage.setItem('bl_session', JSON.stringify({ code }));
 }
 function clearSession() {
-  localStorage.removeItem('dn_session');
+  localStorage.removeItem('bl_session');
 }
 
 /* ---------------- AUTH BOOTSTRAP ---------------- */
@@ -288,7 +296,7 @@ signInAnonymously(auth).catch((err) => {
 });
 
 function tryResumeSession() {
-  const saved = localStorage.getItem('dn_session');
+  const saved = localStorage.getItem('bl_session');
   if (!saved) { showScreen('screen-landing'); return; }
   try {
     const { code } = JSON.parse(saved);
@@ -364,7 +372,7 @@ el('btn-join-game').addEventListener('click', async () => {
 async function createRoom(name, customCode) {
   await authReadyPromise;
   const newRoomData = {
-    createdAt: Date.now(), hostUid: myUid, status: 'lobby',
+    edition: 'blacklist', createdAt: Date.now(), hostUid: myUid, status: 'lobby',
     round: 0, phase: null,
     lScore: 0, kiraScore: 0,
     lastInfoPhaseSwapped: false,
@@ -412,7 +420,7 @@ async function joinRoom(code, name) {
   if (!snap.exists()) throw new Error('Room not found.');
   const room = snap.val();
   // Death Note and Blacklist share one database; keep each edition's rooms apart.
-  if (room.edition === 'blacklist') throw new Error('That code is for a Blacklist game, not Death Note.');
+  if (room.edition !== 'blacklist') throw new Error('That code is for a Death Note game, not Blacklist.');
   if (room.status !== 'lobby') throw new Error('This game has already started.');
 
   const playersRef = ref(db, `rooms/${code}/players`);
@@ -508,7 +516,7 @@ function renderLobby(room) {
   const eventCardsSetting = (room.settings && room.settings.eventCards) || 'off';
   const configuredCount = (watariSetting !== 'off' ? 1 : 0) + (xKiraSetting !== 'off' ? 1 : 0) + (melloSetting !== 'off' ? 1 : 0) + (nSetting !== 'off' ? 1 : 0) + (npaSetting !== 'off' ? 1 : 0) + (misaSetting !== 'off' ? 1 : 0) + (eventCardsSetting !== 'off' ? 1 : 0);
 
-  let html = `<h1 class="title">DEATH NOTE<br><span class="subtitle">Kira's Game</span></h1>
+  let html = `<h1 class="title">BLACKLIST<br><span class="subtitle">Berlin, 1962</span></h1>
     <div class="card">
       <p class="hint">Share this room code with everyone playing:</p>
       <div class="room-code">${room.code}</div>
@@ -533,19 +541,19 @@ function renderLobby(room) {
     html += `<button id="btn-toggle-expansions" class="secondary" type="button">🎭 Expansions &amp; Roles${configuredCount ? ` — ${configuredCount} configured` : ''}</button>`;
     html += `<div id="expansion-body" class="${expansionPanelOpen ? '' : 'hidden'}">
       <p class="hint">On = guaranteed in the game. Off = guaranteed out. Random = 50/50, decided when roles are dealt — and never announced either way.</p>
-      <p class="hint" style="margin-top:10px;">Task Force expansion</p>`;
-    html += roleSettingRow('watari', watariSetting, 'Watari', "A normal Investigator who knows L's identity from the start (and L knows Watari too). Watari is never one of L's 4 suspects.");
-    html += roleSettingRow('npa', npaSetting, 'NPA Chief', "On L/N's team. Can never vote to skip — always names someone. If a vote fails to reach majority, the Chief may force an arrest anyway, choosing from whoever led the vote (or let it go).");
-    html += roleSettingRow('misa', misaSetting, 'Misa', "Replaces the Kira Follower. Knows Kira's identity like any Follower, but has a one-time Shinigami Eyes power: instantly learn half of any player's real name, no mission needed — using it costs her the rest of that Information Phase. Requires a Follower to exist, so it has no effect in a game where X-Kira ends up active.");
-    html += `<p class="hint" style="margin-top:10px;">Special Provisions for Kira</p>`;
-    html += roleSettingRow('xKira', xKiraSetting, 'X-Kira', 'Replaces Kira. Starts with no Follower — once L\'s team reaches 3 points, X-Kira gets one chance to recruit one during a Voting Phase.');
-    html += roleSettingRow('mello', melloSetting, 'Mello', "A neutral third team of one. Can attempt to steal the Death Note from Kira during the Information Phase — succeed, and Mello becomes the new Kira while the old Kira becomes the new Mello. Two failed attempts (by whoever currently holds the role), or an arrest, means elimination.");
-    html += roleSettingRow('n', nSetting, 'N', "Replaces L. Instead of 4 suspects, N accuses one player per Information Phase — an innocent gets cleared for good, Mello gets identified, but Kira or the Follower gives nothing away. Limited Definitive Clears for the whole game (2 with 7-8 players, 3 with 9-10).");
+      <p class="hint" style="margin-top:10px;">Station Staff expansion</p>`;
+    html += roleSettingRow('watari', watariSetting, 'Aide', "A normal Field Agent who knows the Spymaster's identity from the start (and the Spymaster knows the Aide too). The Aide is never one of the Spymaster's 4 suspects.");
+    html += roleSettingRow('npa', npaSetting, 'Station Chief', "On the Spymaster's/Interrogator's team. Can never vote to skip — always names someone. If a vote fails to reach majority, the Chief may force an arrest anyway, choosing from whoever led the vote (or let it go).");
+    html += roleSettingRow('misa', misaSetting, 'Codebreaker', "Replaces the Handler. Knows the Mole's identity like any Handler, but has a one-time Decrypt power: instantly learn half of any player's real name, no mission needed — using it costs her the rest of that Intelligence Phase. Requires a Handler to exist, so it has no effect in a game where the Sleeper ends up active.");
+    html += `<p class="hint" style="margin-top:10px;">Deep Cover</p>`;
+    html += roleSettingRow('xKira', xKiraSetting, 'Sleeper', 'Replaces the Mole. Starts with no Handler — once the Spymaster\'s team reaches 3 points, the Sleeper gets one chance to recruit one during a Voting Phase.');
+    html += roleSettingRow('mello', melloSetting, 'Freelancer', "A neutral third team of one. Can attempt to steal the Dossier from the Mole during the Intelligence Phase — succeed, and the Freelancer becomes the new Mole while the old Mole becomes the new Freelancer. Two failed attempts (by whoever currently holds the role), or an arrest, means elimination.");
+    html += roleSettingRow('n', nSetting, 'Interrogator', "Replaces the Spymaster. Instead of 4 suspects, the Interrogator accuses one player per Intelligence Phase — an innocent gets cleared for good, the Freelancer gets identified, but the Mole or the Handler gives nothing away. Limited Definitive Clears for the whole game (2 with 7-8 players, 3 with 9-10).");
     html += `<p class="hint" style="margin-top:10px;">House Rules</p>`;
-    html += roleSettingRow('eventCards', eventCardsSetting, 'Event Cards', "5 narrative twists (#2/#4/#5/#6/#8) that fire automatically, once each, the moment L's/N's team score crosses that many points — revealed at the start of the Deaths Phase.");
+    html += roleSettingRow('eventCards', eventCardsSetting, 'Event Cards', "5 narrative twists (#2/#4/#5/#6/#8) that fire automatically, once each, the moment the Spymaster's/Interrogator's team score crosses that many points — revealed at the start of the Dawn Report.");
     html += `</div>`;
   } else if (watariSetting === 'on' || xKiraSetting === 'on' || melloSetting === 'on' || nSetting === 'on' || npaSetting === 'on' || misaSetting === 'on' || eventCardsSetting === 'on') {
-    const active = [watariSetting === 'on' && 'Watari (Task Force)', npaSetting === 'on' && 'NPA Chief (Task Force)', misaSetting === 'on' && 'Misa (Task Force)', xKiraSetting === 'on' && 'X-Kira (Special Provisions for Kira)', melloSetting === 'on' && 'Mello (Special Provisions for Kira)', nSetting === 'on' && 'N (Special Provisions for Kira)', eventCardsSetting === 'on' && 'Event Cards (House Rules)'].filter(Boolean);
+    const active = [watariSetting === 'on' && 'Aide (Station Staff)', npaSetting === 'on' && 'Station Chief (Station Staff)', misaSetting === 'on' && 'Codebreaker (Station Staff)', xKiraSetting === 'on' && 'Sleeper (Deep Cover)', melloSetting === 'on' && 'Freelancer (Deep Cover)', nSetting === 'on' && 'Interrogator (Deep Cover)', eventCardsSetting === 'on' && 'Event Cards (House Rules)'].filter(Boolean);
     html += `<p class="hint">Expansion${active.length > 1 ? 's' : ''} active: ${active.join(', ')}</p>`;
   }
 
@@ -578,10 +586,10 @@ function renderLobby(room) {
 
 function cheatRoleLabel(role, enabled) {
   return {
-    L: enabled.nEnabled ? 'N' : 'L',
-    Kira: enabled.xKiraEnabled ? 'X-Kira' : 'Kira',
-    KiraFollower: enabled.misaEnabled ? 'Misa' : "Kira's Follower",
-    Watari: 'Watari', Mello: 'Mello', NPAChief: 'NPA Chief', Investigator: 'Investigator'
+    L: enabled.nEnabled ? 'Interrogator' : 'Spymaster',
+    Kira: enabled.xKiraEnabled ? 'Sleeper' : 'Mole',
+    KiraFollower: enabled.misaEnabled ? 'Codebreaker' : 'Handler',
+    Watari: 'Aide', Mello: 'Freelancer', NPAChief: 'Station Chief', Investigator: 'Field Agent'
   }[role] || role;
 }
 
@@ -600,7 +608,7 @@ function renderCheatRoleAssignment(room) {
   const uniqueRoles = Object.keys(required);
   const valid = cheatAssignmentValid(pool, assignments, ids);
 
-  let html = `<h1 class="title">DEATH NOTE<br><span class="subtitle">Kira's Game</span></h1>
+  let html = `<h1 class="title">BLACKLIST<br><span class="subtitle">Berlin, 1962</span></h1>
     <div class="card">
       <p class="hint">🎭 Cheat mode — pick roles for anyone you like. Everyone left on 🎲 Random gets dealt the remaining roles at random.</p>
       <div class="player-list">`;
@@ -858,52 +866,52 @@ function renderReveal(room) {
   let roleName, roleDesc;
   const isXKira = mySecret.role === 'Kira' && !!room.xKiraActive;
   if (isXKira) {
-    roleName = 'You are X-KIRA';
-    roleDesc = `You lead the evil team alone — no Follower to start. Kill investigators by correctly guessing their secret names. Once ${room.nActive ? 'N' : "L"}'s team reaches 3 points, you can try to recruit a Follower during the Voting Phase. Avoid being arrested.`;
+    roleName = 'You are THE SLEEPER';
+    roleDesc = `You lead the evil team alone — no Handler to start. Kill field agents by correctly guessing their secret names. Once ${room.nActive ? 'the Interrogator' : 'the Spymaster'}'s team reaches 3 points, you can try to recruit a Handler during the Voting Phase. Avoid being arrested.`;
   } else if (mySecret.role === 'Kira') {
-    roleName = 'You are KIRA';
-    roleDesc = "You lead the evil team. Coordinate with your Follower during the Information Phase. Kill investigators by correctly guessing their secret names. Avoid being arrested.";
+    roleName = 'You are THE MOLE';
+    roleDesc = "You lead the evil team. Coordinate with your Handler during the Intelligence Phase. Kill field agents by correctly guessing their secret names. Avoid being arrested.";
   } else if (mySecret.role === 'KiraFollower' && room.misaActive) {
-    roleName = 'You are MISA';
-    roleDesc = "You know who Kira is, and you're utterly devoted to them. You traded half your remaining lifespan for Shinigami Eyes — once for the whole game, you can look at any other player and instantly learn either their first or last name, no mission needed. Using it costs you the rest of that Information Phase.";
+    roleName = 'You are THE CODEBREAKER';
+    roleDesc = "You know who the Mole is, and you work for them. You've cracked one of the station's cipher books — once for the whole game, you can Decrypt any other player's file and instantly learn either their first or last name, no mission needed. Using it costs you the rest of that Intelligence Phase.";
   } else if (mySecret.role === 'KiraFollower') {
-    roleName = "You are KIRA'S FOLLOWER";
-    roleDesc = "You know who Kira is. Help them strategize over a private chat you two can use any time, all game long — not just during the Information Phase. Only Kira can write in the Death Note or swap it with you — if they choose to swap, you become Kira yourself.";
+    roleName = "You are THE HANDLER";
+    roleDesc = "You know who the Mole is. Help them strategize over a private chat you two can use any time, all game long — not just during the Intelligence Phase. Only the Mole can write in the Dossier or swap it with you — if they choose to swap, you become the Mole yourself.";
   } else if (mySecret.role === 'L' && room.nActive) {
-    roleName = 'You are N';
+    roleName = 'You are THE INTERROGATOR';
     const cap = room.nClearCap || 2;
-    roleDesc = `Where L works from instinct, you work from proof. Each Information Phase you may accuse one player: an innocent gets cleared for good, Mello (if he's in this game) gets identified to you, but Kira or the Follower gives you nothing — silence is a clue too. You have ${cap} Definitive Clears for the whole game; accusing Kira, the Follower, or Mello never spends one.`;
+    roleDesc = `Where the Spymaster works from instinct, you work from proof. Each Intelligence Phase you may accuse one player: an innocent gets cleared for good, the Freelancer (if he's in this game) gets identified to you, but the Mole or the Handler gives you nothing — silence is a clue too. You have ${cap} Definitive Clears for the whole game; accusing the Mole, the Handler, or the Freelancer never spends one.`;
   } else if (mySecret.role === 'L') {
-    roleName = 'You are L';
-    roleDesc = "Each Information Phase you'll be shown 4 suspects — one is truly Kira. Use missions and votes to find and arrest Kira before it's too late.";
+    roleName = 'You are THE SPYMASTER';
+    roleDesc = "Each Intelligence Phase you'll be shown 4 suspects — one is truly the Mole. Use missions and votes to find and arrest the Mole before it's too late.";
   } else if (mySecret.role === 'Watari') {
-    roleName = 'You are WATARI';
-    roleDesc = "You're a normal Investigator in every way that matters — vote, join missions, help find Kira. The one difference: you know L's identity from the start, and L knows you. You're never one of L's 4 suspects.";
+    roleName = 'You are THE AIDE';
+    roleDesc = "You're a normal Field Agent in every way that matters — vote, join missions, help find the Mole. The one difference: you know the Spymaster's identity from the start, and the Spymaster knows you. You're never one of the Spymaster's 4 suspects.";
   } else if (mySecret.role === 'Mello') {
-    roleName = 'You are MELLO';
-    roleDesc = "A team of one — not with L, not with Kira. Your goal: steal the Death Note and become the new Kira yourself. During the Information Phase you can guess who's holding it. You get 2 attempts total, for as long as you hold this role — fail both, or get arrested, and you're eliminated.";
+    roleName = 'You are THE FREELANCER';
+    roleDesc = "A team of one — not with the Spymaster, not with the Mole. Your goal: steal the Dossier and become the new Mole yourself. During the Intelligence Phase you can guess who's holding it. You get 2 attempts total, for as long as you hold this role — fail both, or get arrested, and you're eliminated.";
   } else if (mySecret.role === 'NPAChief') {
-    roleName = 'You are NPA CHIEF';
-    roleDesc = `A normal Investigator on ${room.nActive ? "N" : 'L'}'s side, bound to your post: you can never vote to skip — always name someone. If a vote ever fails to reach a majority, you alone may force an arrest anyway, choosing from whoever led the vote — or let it go, if you don't like the odds.`;
+    roleName = 'You are the STATION CHIEF';
+    roleDesc = `A normal Field Agent on ${room.nActive ? 'the Interrogator' : 'the Spymaster'}'s side, bound to your post: you can never vote to skip — always name someone. If a vote ever fails to reach a majority, you alone may force an arrest anyway, choosing from whoever led the vote — or let it go, if you don't like the odds.`;
   } else {
-    roleName = 'You are an INVESTIGATOR';
-    roleDesc = "You're on L's side. Vote wisely and help complete missions to expose Kira.";
+    roleName = 'You are a FIELD AGENT';
+    roleDesc = "You're on the Spymaster's side. Vote wisely and help complete missions to expose the Mole.";
   }
 
   let partnerHtml = '';
   const players = obj(room.players);
   if (mySecret.role === 'Kira' && room.followerPlayerId && players[room.followerPlayerId]) {
     const f = players[room.followerPlayerId];
-    partnerHtml = `<div class="role-desc">Your Follower is <strong>Investigator ${f.label} — ${esc(f.name)}</strong>.</div>`;
+    partnerHtml = `<div class="role-desc">Your Handler is <strong>Agent ${f.label} — ${esc(f.name)}</strong>.</div>`;
   } else if (mySecret.role === 'KiraFollower' && room.kiraPlayerId && players[room.kiraPlayerId]) {
     const k = players[room.kiraPlayerId];
-    partnerHtml = `<div class="role-desc">Kira is <strong>Investigator ${k.label} — ${esc(k.name)}</strong>.</div>`;
+    partnerHtml = `<div class="role-desc">The Mole is <strong>Agent ${k.label} — ${esc(k.name)}</strong>.</div>`;
   } else if (mySecret.role === 'Watari' && room.lPlayerId && players[room.lPlayerId]) {
     const l = players[room.lPlayerId];
-    partnerHtml = `<div class="role-desc">${room.nActive ? 'N' : 'L'} is <strong>Investigator ${l.label} — ${esc(l.name)}</strong>.</div>`;
+    partnerHtml = `<div class="role-desc">${room.nActive ? 'The Interrogator' : 'The Spymaster'} is <strong>Agent ${l.label} — ${esc(l.name)}</strong>.</div>`;
   } else if (mySecret.role === 'L' && room.watariPlayerId && players[room.watariPlayerId]) {
     const w = players[room.watariPlayerId];
-    partnerHtml = `<div class="role-desc">Watari is <strong>Investigator ${w.label} — ${esc(w.name)}</strong>.</div>`;
+    partnerHtml = `<div class="role-desc">The Aide is <strong>Agent ${w.label} — ${esc(w.name)}</strong>.</div>`;
   }
 
   const ready = !!mySecret.ready;
@@ -956,7 +964,7 @@ async function maybeStartRound(room, code) {
 
 function updateHeader(room) {
   el('round-label').textContent = `Round ${room.round || 1}`;
-  el('score-label').textContent = `${room.nActive ? 'N' : 'L'}: ${room.lScore || 0}  |  Kira: ${room.kiraScore || 0}`;
+  el('score-label').textContent = `${room.nActive ? 'Interrogator' : 'Spymaster'}: ${room.lScore || 0}  |  Mole: ${room.kiraScore || 0}`;
 }
 
 function renderRound(room) {
@@ -1063,7 +1071,7 @@ function updateKiraChatPanel(room) {
   panel.classList.toggle('hidden', !visible);
   if (!visible) return;
 
-  el('kira-chat-toggle-label').textContent = `Chat with your ${myPlayerId === room.kiraPlayerId ? 'Follower' : 'Kira'}`;
+  el('kira-chat-toggle-label').textContent = `Chat with your ${myPlayerId === room.kiraPlayerId ? 'Handler' : 'Mole'}`;
 
   // The Information-Phase-specific restrictions (Misa's Shinigami Eyes cost,
   // the arrest sit-out) still block chat, but only during that one phase --
@@ -1073,10 +1081,10 @@ function updateKiraChatPanel(room) {
     const info = obj(room.info);
     if (obj(info.sittingOutIds)[myPlayerId]) {
       restricted = true;
-      restrictedReason = "You're sitting out this Information Phase.";
+      restrictedReason = "You're sitting out this Intelligence Phase.";
     } else if (room.misaActive && myPlayerId === room.followerPlayerId && info.misaUsedThisPhase) {
       restricted = true;
-      restrictedReason = 'Your Shinigami Eyes cost you this Information Phase.';
+      restrictedReason = 'Your Decrypt cost you this Intelligence Phase.';
     }
   }
 
@@ -1124,7 +1132,7 @@ setInterval(() => {
   }
   if (remainingMs <= KIRA_TURN_WARNING_MS && !kiraTurnWarningShown) {
     kiraTurnWarningShown = true;
-    showToast("<p><strong>30 seconds left for Kira's team to finish this phase...</strong></p>");
+    showToast("<p><strong>30 seconds left for the Mole's team to finish this phase...</strong></p>");
   }
 }, 1000);
 
@@ -1132,19 +1140,19 @@ function applyWinCheck(room) {
   if (room.status === 'gameover') return;
   if ((room.kiraScore || 0) >= 10) {
     room.status = 'gameover';
-    room.gameOverInfo = { winner: 'Kira', reason: "Kira's team reached 10 points." };
+    room.gameOverInfo = { winner: 'Kira', reason: "The Mole's team reached 10 points." };
     return;
   }
-  const detectiveLabel = room.nActive ? 'N' : 'L';
+  const detectiveLabel = room.nActive ? 'the Interrogator' : 'the Spymaster';
   if ((room.lScore || 0) >= 10) {
     room.status = 'gameover';
-    room.gameOverInfo = { winner: 'L', reason: `${detectiveLabel}'s team reached 10 points.` };
+    room.gameOverInfo = { winner: 'L', reason: `${cap(detectiveLabel)}'s team reached 10 points.` };
     return;
   }
   const l = room.secrets && room.secrets[room.lPlayerId];
   if (l && !l.alive) {
     room.status = 'gameover';
-    room.gameOverInfo = { winner: 'Kira', reason: `${detectiveLabel} has been killed.` };
+    room.gameOverInfo = { winner: 'Kira', reason: `${cap(detectiveLabel)} has been killed.` };
   }
 }
 
@@ -1154,14 +1162,14 @@ function renderDeathsPhase(room) {
   const players = obj(room.players);
   const deaths = Object.keys(obj(room.pendingDeaths));
   const isHost = myUid === room.hostUid;
-  let html = `<h2>Deaths Phase</h2><div class="card">`;
+  let html = `<h2>Dawn Report</h2><div class="card">`;
   if (deaths.length === 0) html += `<p>No one has died... yet.</p>`;
-  else deaths.forEach(id => { html += `<p>Investigator ${players[id].label} has died.</p>`; });
+  else deaths.forEach(id => { html += `<p>Agent ${players[id].label} has died.</p>`; });
   if (deaths.includes(room.watariPlayerId)) {
-    html += `<p class="watari-alert">Watari has died... All data deletion.</p>`;
+    html += `<p class="watari-alert">The Aide has been burned... The Spymaster's files are compromised.</p>`;
   }
   if (room.eventKillCheckPenalty) {
-    html += `<p class="hint">🎴 Lint L Taylor Trap: Kira's team didn't successfully kill anyone last Information Phase — ${room.nActive ? 'N' : 'L'}'s team gained +2 points.</p>`;
+    html += `<p class="hint">🎴 The Decoy: The Mole's team didn't successfully kill anyone last Intelligence Phase — ${room.nActive ? 'the Interrogator' : 'the Spymaster'}'s team gained +2 points.</p>`;
   }
   html += isHost
     ? `<button id="btn-deaths-continue" class="primary">Continue</button>`
@@ -1236,7 +1244,7 @@ function renderPendingEventCardHtml(room, key, isHost) {
       } else if (votes[myPlayerId] !== undefined) {
         html += `<p class="waiting">Vote cast. Waiting for others... (${Object.keys(votes).length}/${aliveIds.length} voted)</p>`;
       } else {
-        html += `<p class="hint">Who do you trust most to use the Shinigami Eyes wisely?</p><div id="event-vote-choices">`;
+        html += `<p class="hint">Who do you trust most to receive the Defector's Tip?</p><div id="event-vote-choices">`;
         aliveIds.filter(id => id !== myPlayerId).forEach(id => {
           html += `<button class="choice" data-target="${id}">${players[id].label} — ${esc(players[id].name)}</button>`;
         });
@@ -1249,7 +1257,7 @@ function renderPendingEventCardHtml(room, key, isHost) {
         const v = votes[id];
         html += `<div class="player-row"><span>${players[id].label} — ${esc(players[id].name)}</span><span>${v && players[v] ? players[v].label : '—'}</span></div>`;
       });
-      html += `<p><strong>${winner ? `${winner.label} — ${esc(winner.name)}` : '?'} received the Shinigami Eyes.</strong></p>`;
+      html += `<p><strong>${winner ? `${winner.label} — ${esc(winner.name)}` : '?'} received the Defector's Tip.</strong></p>`;
       if (state.winnerId === myPlayerId && !state.eyesResult) {
         const eyesTargets = aliveIds.filter(id => id !== myPlayerId);
         html += `<div class="card"><p class="hint">Privately choose who to look at — you'll learn their full real name.</p>`;
@@ -1258,7 +1266,7 @@ function renderPendingEventCardHtml(room, key, isHost) {
         } else {
           html += `<label>Look at</label>
             <select id="event-eyes-target">${eyesTargets.map(id => `<option value="${id}">${players[id].label} — ${esc(players[id].name)}</option>`).join('')}</select>
-            <button id="btn-event-eyes-submit" class="danger">Use Shinigami Eyes</button>`;
+            <button id="btn-event-eyes-submit" class="danger">Use the Tip</button>`;
         }
         html += `</div>`;
       } else if (state.winnerId === myPlayerId && state.eyesResult) {
@@ -1271,7 +1279,7 @@ function renderPendingEventCardHtml(room, key, isHost) {
       const canDismiss = !!state.eyesResult || noValidEyesTargets;
       html += canDismiss
         ? (isHost ? `<button id="btn-event-dismiss" class="primary" data-key="4">Continue</button>` : `<p class="waiting">Waiting for the host to continue...</p>`)
-        : `<p class="waiting">Waiting for ${winner ? winner.label : '...'} to use the Shinigami Eyes...</p>`;
+        : `<p class="waiting">Waiting for ${winner ? winner.label : '...'} to use the Defector's Tip...</p>`;
     }
   } else if (key === '5') {
     if (!state.resolved) {
@@ -1293,7 +1301,7 @@ function renderPendingEventCardHtml(room, key, isHost) {
         html += `<div class="player-row"><span>${players[id].label} — ${esc(players[id].name)}</span><span>${v && players[v] ? players[v].label : '—'}</span></div>`;
       });
       const lockedLabels = Object.keys(obj(state.lockedIds)).map(id => players[id] ? players[id].label : id).sort();
-      html += `<p><strong>${lockedLabels.join(' and ')} have been locked up.</strong> They'll sit out the next mission and Information Phase.</p>`;
+      html += `<p><strong>${lockedLabels.join(' and ')} have been locked up.</strong> They'll sit out the next mission and Intelligence Phase.</p>`;
       html += isHost
         ? `<button id="btn-event-dismiss" class="primary" data-key="5">Continue</button>`
         : `<p class="waiting">Waiting for the host to continue...</p>`;
@@ -1428,7 +1436,7 @@ function renderMissionPhase(room) {
   const isHost = myUid === room.hostUid;
 
   let html = `<h2>Mission Phase</h2><div class="card">`;
-  html += `<p><strong>Leading Investigator: ${leader ? leader.label + ' — ' + esc(leader.name) : '...'}</strong></p>`;
+  html += `<p><strong>Lead Agent: ${leader ? leader.label + ' — ' + esc(leader.name) : '...'}</strong></p>`;
 
   if (m.step === 'choose_card') {
     if (isLeader) {
@@ -1501,9 +1509,9 @@ function renderMissionPhase(room) {
       if (m.approved) {
         html += `<p><strong>Team APPROVED — the mission proceeds.</strong></p>`;
       } else if (m.autoFailed) {
-        html += `<p><strong>Team REJECTED a second time — this mission automatically fails. Kira's team gains a point.</strong></p>`;
+        html += `<p><strong>Team REJECTED a second time — this mission automatically fails. The Mole's team gains a point.</strong></p>`;
       } else {
-        html += `<p><strong>Team REJECTED — a new Leading Investigator will be chosen for the same mission.</strong></p>`;
+        html += `<p><strong>Team REJECTED — a new Lead Agent will be chosen for the same mission.</strong></p>`;
       }
       html += isHost
         ? `<button id="btn-approve-continue" class="primary">Continue</button>`
@@ -1516,7 +1524,7 @@ function renderMissionPhase(room) {
     html += `<p class="hint">Team: ${teamIds.map(id => players[id].label).join(', ')}</p>
       <p class="hint">Everyone on the mission plays Supply Cards face-down — at least 1 each. ${card.color === 'white' ? 'White' : 'Black'} or Gray cards help the total; the opposite color hurts it.</p>`;
     if (room.eventMissionBonusActive) {
-      html += `<p class="hint">🎬 Card #2 (Kira Video Messages) is active — every card played this mission is worth a flat +1, regardless of color.</p>`;
+      html += `<p class="hint">🎬 Card #2 (Propaganda Broadcast) is active — every card played this mission is worth a flat +1, regardless of color.</p>`;
     }
     if (onTeam) {
       if (submitted[myPlayerId]) {
@@ -1552,11 +1560,11 @@ function renderMissionPhase(room) {
     html += `<p class="hint">Team: ${teamIds.map(id => players[id].label).join(', ')}</p>`;
     html += `<p class="hint">Cards played: ${parts.join(', ') || 'none'} — total value <strong>${m.cardTotal}</strong> vs. threshold <strong>${card.points}</strong>. (Who played what stays hidden.)</p>`;
     if (m.eventBonusApplied) {
-      html += `<p class="hint">Card #2 (Kira Video Messages) was active — every card counted as a flat +1, regardless of color.</p>`;
+      html += `<p class="hint">Card #2 (Propaganda Broadcast) was active — every card counted as a flat +1, regardless of color.</p>`;
     }
     html += m.result === 'success'
-      ? `<p><strong>Mission SUCCEEDED! ${room.nActive ? 'N' : 'L'} +1</strong></p>`
-      : `<p><strong>Mission FAILED! Kira +1</strong></p>`;
+      ? `<p><strong>Mission SUCCEEDED! ${room.nActive ? 'Interrogator' : 'Spymaster'} +1</strong></p>`
+      : `<p><strong>Mission FAILED! Mole +1</strong></p>`;
     html += isHost
       ? `<button id="btn-result-continue" class="primary">Continue</button>`
       : `<p class="waiting">Waiting for the host to continue...</p>`;
@@ -1594,7 +1602,7 @@ function renderMissionPhase(room) {
   } else if (m.step === 'share') {
     const teamIds = Object.keys(obj(m.teamIds));
     const onMission = teamIds.includes(myPlayerId);
-    html += `<p><strong>Mission ${m.result === 'success' ? `succeeded! ${room.nActive ? 'N' : 'L'} +1` : 'failed! Kira +1'}</strong></p>`;
+    html += `<p><strong>Mission ${m.result === 'success' ? `succeeded! ${room.nActive ? 'Interrogator' : 'Spymaster'} +1` : 'failed! Mole +1'}</strong></p>`;
 
     const shareTypeLabel = { first: 'first name', last: 'last name', both: 'name' }[m.shareType] || 'name';
 
@@ -2082,9 +2090,9 @@ function renderVotingPhase(room) {
       const amNpaChief = myPlayerId === room.npaPlayerId;
       const noSkip = amNpaChief || !!room.eventNoSkipActive;
       const skipHint = amNpaChief
-        ? "As NPA Chief, you're bound to your post — you must name someone, no skipping."
+        ? "As Station Chief, you're bound to your post — you must name someone, no skipping."
         : room.eventNoSkipActive
-          ? '🎴 Card #8 (Vindicating Evidence) is active — no Skip this round; if no majority forms, the most-voted player is arrested anyway.'
+          ? '🎴 Card #8 (Smoking Gun) is active — no Skip this round; if no majority forms, the most-voted player is arrested anyway.'
           : 'Vote to arrest a player, or skip.';
       html += `<p class="hint">${skipHint}</p><div id="vote-choices">`;
       aliveIds.filter(id => id !== myPlayerId).forEach(id => {
@@ -2107,25 +2115,25 @@ function renderVotingPhase(room) {
 
     if (tieBreakPending) {
       if (amNpaChief) {
-        html += `<p class="hint">No majority — as NPA Chief, you may force an arrest anyway, choosing from whoever led the vote. Or let it go.</p>
+        html += `<p class="hint">No majority — as Station Chief, you may force an arrest anyway, choosing from whoever led the vote. Or let it go.</p>
           <div id="tiebreak-choices">`;
         Object.keys(obj(voting.tieBreakCandidates)).forEach(id => {
           html += `<button class="choice" data-target="${id}">${players[id].label} — ${esc(players[id].name)}</button>`;
         });
         html += `<button class="choice" data-target="none">Let It Go — No Arrest</button></div>`;
       } else {
-        html += `<p class="waiting">No majority — waiting for the NPA Chief's decision...</p>`;
+        html += `<p class="waiting">No majority — waiting for the Station Chief's decision...</p>`;
       }
     } else if (!voting.arrestedId) {
       html += `<p><strong>No majority reached — no one is arrested.</strong></p>`;
     } else {
       const arrested = players[voting.arrestedId];
       const arrestedSecret = secrets[voting.arrestedId];
-      html += `<p><strong>Investigator ${arrested.label} has been arrested.</strong></p>
+      html += `<p><strong>Agent ${arrested.label} has been arrested.</strong></p>
         <p>They must reveal their secret identity: <strong>${arrestedSecret.firstName} ${arrestedSecret.lastName}</strong></p>`;
       html += arrestedSecret.alive === false
         ? `<p class="hint">${arrested.label} is eliminated from the game entirely.</p>`
-        : `<p class="hint">${arrested.label} will sit out the next mission and next Information Phase.</p>`;
+        : `<p class="hint">${arrested.label} will sit out the next mission and next Intelligence Phase.</p>`;
     }
     if (!tieBreakPending) {
       html += isHost
@@ -2147,8 +2155,8 @@ function renderVotingPhase(room) {
 
   if (recruitEligible) {
     html += `<div class="card">
-      <h3>Recruit a Follower</h3>
-      <p class="hint">${room.nActive ? 'N' : "L"}'s team has reached 3 points. Choose 2 players to attempt to recruit — the app will pick one of them at random. This is a one-time offer. (${picks.length}/2 selected)</p>
+      <h3>Recruit a Handler</h3>
+      <p class="hint">${room.nActive ? 'The Interrogator' : "The Spymaster"}'s team has reached 3 points. Choose 2 players to attempt to recruit — the app will pick one of them at random. This is a one-time offer. (${picks.length}/2 selected)</p>
       <div id="recruit-list">`;
     aliveIds.filter(id => id !== myPlayerId).forEach(id => {
       const selected = picks.includes(id);
@@ -2159,19 +2167,19 @@ function renderVotingPhase(room) {
   } else if (amXKira && voting.recruitDone && voting.recruitBothProtected) {
     const [pickA, pickB] = Object.keys(obj(voting.recruitPicks));
     const pA = players[pickA], pB = players[pickB];
-    const base = `The two people you chose to recruit — ${pA.label} — ${esc(pA.name)} and ${pB.label} — ${esc(pB.name)} — were L and Watari.`;
+    const base = `The two people you chose to recruit — ${pA.label} — ${esc(pA.name)} and ${pB.label} — ${esc(pB.name)} — were the Spymaster and the Aide.`;
     if (voting.recruitedId) {
       const recruited = players[voting.recruitedId];
-      html += `<div class="card"><p><strong>${recruited.label} — ${esc(recruited.name)} has joined you as your Follower.</strong></p><p class="hint">${base} A third person was recruited instead.</p></div>`;
+      html += `<div class="card"><p><strong>${recruited.label} — ${esc(recruited.name)} has joined you as your Handler.</strong></p><p class="hint">${base} A third person was recruited instead.</p></div>`;
     } else {
       html += `<div class="card"><p class="hint">${base} No one else was available to recruit instead.</p></div>`;
     }
   } else if (amXKira && voting.recruitDone && voting.recruitedId) {
     const recruited = players[voting.recruitedId];
-    html += `<div class="card"><p><strong>${recruited.label} — ${esc(recruited.name)} has joined you as your Follower.</strong></p></div>`;
+    html += `<div class="card"><p><strong>${recruited.label} — ${esc(recruited.name)} has joined you as your Handler.</strong></p></div>`;
   } else if (xKiraActive && voting.recruitDone && voting.recruitedId === myPlayerId) {
     const kira = players[room.kiraPlayerId];
-    html += `<div class="card"><p><strong>You have been recruited into a Kira Follower.</strong></p><p>X-Kira is <strong>${kira.label} — ${esc(kira.name)}</strong>.</p></div>`;
+    html += `<div class="card"><p><strong>You have been recruited as the Sleeper's Handler.</strong></p><p>The Sleeper is <strong>${kira.label} — ${esc(kira.name)}</strong>.</p></div>`;
   }
 
   el('round-content').innerHTML = html;
@@ -2399,11 +2407,11 @@ function renderEndgame(room) {
   const secrets = obj(room.secrets);
   const arrested = players[room.voting.arrestedId];
 
-  let html = `<h2>Kira Has Been Arrested</h2><div class="card pass-card">
-    <p><strong>Investigator ${arrested.label} was Kira!</strong></p>`;
+  let html = `<h2>The Mole Has Been Arrested</h2><div class="card pass-card">
+    <p><strong>Agent ${arrested.label} was the Mole!</strong></p>`;
 
   const amGuesser = myPlayerId === room.kiraPlayerId || myPlayerId === room.followerPlayerId;
-  const detectiveLabel = room.nActive ? 'N' : 'L';
+  const detectiveLabel = room.nActive ? 'the Interrogator' : 'the Spymaster';
   if (amGuesser) {
     const candidates = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && id !== room.kiraPlayerId && id !== room.followerPlayerId);
     html += `<p class="hint">You get one shared guess: who is ${detectiveLabel}, and what's their secret name?</p>
@@ -2415,7 +2423,7 @@ function renderEndgame(room) {
       <select id="guess-last">${LAST_NAMES.map(n => `<option value="${n}">${n}</option>`).join('')}</select>
       <button id="btn-endgame-submit" class="primary">Submit Final Guess</button>`;
   } else {
-    html += `<p class="waiting">Kira and the Follower are making their final guess...</p>`;
+    html += `<p class="waiting">The Mole and the Handler are making their final guess...</p>`;
   }
   html += `</div>`;
   el('round-content').innerHTML = html;
@@ -2434,13 +2442,13 @@ async function submitEndgameGuess(code, whoId, first, last) {
   await runTransaction(ref(db, `rooms/${code}`), (room) => {
     if (!room || !room.endgame || !room.endgame.active || room.endgame.resolved) return room;
     const l = room.secrets[room.lPlayerId];
-    const detectiveLabel = room.nActive ? 'N' : 'L';
+    const detectiveLabel = room.nActive ? 'the Interrogator' : 'the Spymaster';
     room.endgame.resolved = true;
     room.status = 'gameover';
     if (whoId === room.lPlayerId && first === l.firstName && last === l.lastName) {
-      room.gameOverInfo = { winner: 'Kira', reason: `Kira's team correctly identified ${detectiveLabel}: Investigator ${room.players[room.lPlayerId].label}, ${l.firstName} ${l.lastName}.` };
+      room.gameOverInfo = { winner: 'Kira', reason: `The Mole's team correctly identified ${detectiveLabel}: Agent ${room.players[room.lPlayerId].label}, ${l.firstName} ${l.lastName}.` };
     } else {
-      room.gameOverInfo = { winner: 'L', reason: `Kira's team guessed wrong. ${detectiveLabel} was actually Investigator ${room.players[room.lPlayerId].label} — ${l.firstName} ${l.lastName}.` };
+      room.gameOverInfo = { winner: 'L', reason: `The Mole's team guessed wrong. ${cap(detectiveLabel)} was actually Agent ${room.players[room.lPlayerId].label} — ${l.firstName} ${l.lastName}.` };
     }
     return room;
   });
@@ -2486,7 +2494,7 @@ function renderInformationPhase(room) {
   const prevEyesTarget = el('eyes-target') ? el('eyes-target').value : null;
   const prevEyesPart = el('eyes-part') ? el('eyes-part').value : null;
 
-  let html = `<h2>Information Phase</h2><div class="card pass-card">`;
+  let html = `<h2>Intelligence Phase</h2><div class="card pass-card">`;
 
   if (amL && room.nActive) {
     const cap = room.nClearCap || 2;
@@ -2498,18 +2506,18 @@ function renderInformationPhase(room) {
       html += `<p class="hint">Cleared: ${clearedIds.map(id => players[id] ? players[id].label : '?').join(', ')}</p>`;
     }
     if (melloRevealed) {
-      html += `<p class="hint">Identified as Mello: ${players[room.melloPlayerId].label} — ${esc(players[room.melloPlayerId].name)}</p>`;
+      html += `<p class="hint">Identified as the Freelancer: ${players[room.melloPlayerId].label} — ${esc(players[room.melloPlayerId].name)}</p>`;
     }
     const result = info.nAccuseResult;
     if (result && players[result.targetId]) {
       const t = players[result.targetId];
-      if (result.outcome === 'cleared') html += `<p><strong>${t.label} — ${esc(t.name)} is cleared. Not Kira.</strong></p>`;
-      else if (result.outcome === 'mello') html += `<p><strong>${t.label} — ${esc(t.name)} is Mello.</strong></p>`;
+      if (result.outcome === 'cleared') html += `<p><strong>${t.label} — ${esc(t.name)} is cleared. Not the Mole.</strong></p>`;
+      else if (result.outcome === 'mello') html += `<p><strong>${t.label} — ${esc(t.name)} is the Freelancer.</strong></p>`;
       else if (result.outcome === 'capped') html += `<p class="hint">Out of Definitive Clears — no new information on ${t.label}.</p>`;
       else html += `<p class="hint">No new information on ${t.label}.</p>`;
     }
     if (info.lDone) {
-      html += `<p class="hint">Done. Waiting for Kira's team to finish...</p>`;
+      html += `<p class="hint">Done. Waiting for the Mole's team to finish...</p>`;
     } else {
       const excludeIds = new Set([myPlayerId, room.watariPlayerId, ...clearedIds]);
       if (melloRevealed) excludeIds.add(room.melloPlayerId);
@@ -2527,18 +2535,18 @@ function renderInformationPhase(room) {
     const suspectIds = Object.keys(obj(info.lSuspects));
     if (info.lDone) {
       if (suspectIds.length > 0) {
-        html += `<p><strong>${suspectIds.length} Suspects — one of them is Kira:</strong></p>`;
+        html += `<p><strong>${suspectIds.length} Suspects — one of them is the Mole:</strong></p>`;
         suspectIds.forEach(id => { html += `<div class="player-row"><span>${players[id].label} — ${esc(players[id].name)}</span></div>`; });
-        html += `<p class="hint">Done. Waiting for Kira's team to finish...</p>`;
+        html += `<p class="hint">Done. Waiting for the Mole's team to finish...</p>`;
       } else {
-        html += `<p class="hint">You're sitting out this Information Phase.</p>`;
+        html += `<p class="hint">You're sitting out this Intelligence Phase.</p>`;
       }
     } else if (suspectIds.length === 0) {
       html += `<button id="btn-l-reveal" class="primary">Reveal My ${lSuspectPoolAndCount(room).total} Suspects</button>`;
     } else {
-      html += `<p><strong>${suspectIds.length} Suspects — one of them is Kira:</strong></p>`;
+      html += `<p><strong>${suspectIds.length} Suspects — one of them is the Mole:</strong></p>`;
       suspectIds.forEach(id => { html += `<div class="player-row"><span>${players[id].label} — ${esc(players[id].name)}</span></div>`; });
-      html += `<p class="hint">Kira's Follower has an equal chance of appearing here as any other Investigator.</p>
+      html += `<p class="hint">The Handler has an equal chance of appearing here as any other Field Agent.</p>
         <button id="btn-l-done" class="primary">Done</button>`;
     }
   } else if (amKiraTeam) {
@@ -2547,39 +2555,39 @@ function renderInformationPhase(room) {
     const amActingKira = myPlayerId === room.kiraPlayerId;
     const stealResult = info.stealResult;
     if (stealResult && stealResult.success && stealResult.thief === myPlayerId) {
-      html += `<p class="hint"><strong>You successfully stole the Death Note. You are now Kira.</strong></p>`;
+      html += `<p class="hint"><strong>You successfully stole the Dossier. You are now the Mole.</strong></p>`;
     }
-    html += `<p><strong>Kira:</strong> ${kira.label} — ${esc(kira.name)}${follower ? ` &nbsp; <strong>Follower:</strong> ${follower.label} — ${esc(follower.name)}` : ' &nbsp; <em>(no Follower yet)</em>'}</p>
+    html += `<p><strong>The Mole:</strong> ${kira.label} — ${esc(kira.name)}${follower ? ` &nbsp; <strong>Handler:</strong> ${follower.label} — ${esc(follower.name)}` : ' &nbsp; <em>(no Handler yet)</em>'}</p>
       <p class="hint">${follower ? 'Share what you learned during the Mission Phase and strategize.' : "You're operating alone this round."}</p><hr>`;
 
     if (amSittingOut) {
-      html += `<p class="hint"><strong>You're sitting out this Information Phase.</strong></p>
+      html += `<p class="hint"><strong>You're sitting out this Intelligence Phase.</strong></p>
         <p class="hint">You were arrested last round — waiting for the round to finish...</p>`;
     } else if (misaLockedThisRound) {
       const eyesResult = info.misaEyesResult;
-      html += `<p class="hint"><strong>You used your Shinigami Eyes this round.</strong></p>`;
+      html += `<p class="hint"><strong>You used your Decrypt this round.</strong></p>`;
       if (eyesResult && players[eyesResult.targetId]) {
         const t = players[eyesResult.targetId];
         const partLabel = eyesResult.part === 'first' ? 'first name' : 'last name';
         html += `<p><strong>${t.label} — ${esc(t.name)}'s ${partLabel}: ${esc(eyesResult.value)}</strong></p>`;
       }
-      html += `<p class="hint">Using it cost you the rest of this Information Phase — waiting for Kira to finish...</p>`;
+      html += `<p class="hint">Using it cost you the rest of this Intelligence Phase — waiting for the Mole to finish...</p>`;
     } else if (info.kiraDone) {
-      html += `<p class="hint">Done. Waiting for ${room.nActive ? 'N' : 'L'} to finish...</p>`;
+      html += `<p class="hint">Done. Waiting for ${room.nActive ? 'the Interrogator' : 'the Spymaster'} to finish...</p>`;
     } else if (amActingKira) {
       const canSwap = !!follower && !room.lastInfoPhaseSwapped && !info.swappedThisPhase;
       if (!follower) { /* nothing to swap with yet */ }
-      else if (info.swappedThisPhase) html += `<p class="hint">The Death Note was swapped this phase.</p>`;
-      else if (canSwap) html += `<button id="btn-swap-note" class="secondary">Swap the Death Note (Kira ⇄ Follower)</button>`;
-      else html += `<p class="hint">The Death Note was swapped last time — cannot swap again this round.</p>`;
+      else if (info.swappedThisPhase) html += `<p class="hint">The Dossier was swapped this phase.</p>`;
+      else if (canSwap) html += `<button id="btn-swap-note" class="secondary">Swap the Dossier (the Mole ⇄ Handler)</button>`;
+      else html += `<p class="hint">The Dossier was swapped last time — cannot swap again this round.</p>`;
 
       if (room.eventForceKillActive) {
-        html += `<p class="hint">🎴 Card #6 (Lint L Taylor Trap) is active — if your team doesn't successfully kill someone this phase, ${room.nActive ? 'N' : 'L'}'s team gets +2 points.</p>`;
+        html += `<p class="hint">🎴 Card #6 (The Decoy) is active — if your team doesn't successfully kill someone this phase, ${room.nActive ? 'the Interrogator' : 'the Spymaster'}'s team gets +2 points.</p>`;
       }
-      html += `<hr><p><strong>Write a name in the Death Note?</strong></p>`;
+      html += `<hr><p><strong>Write a name in the Dossier?</strong></p>`;
       const killsUsed = info.killsThisPhase || 0;
       if (killsUsed >= 2) {
-        html += `<p class="hint">You've used both kills for this Information Phase.</p>`;
+        html += `<p class="hint">You've used both kills for this Intelligence Phase.</p>`;
       } else {
         const targets = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && !secrets[id].immune && id !== room.kiraPlayerId && id !== room.followerPlayerId);
         if (targets.length === 0) {
@@ -2597,12 +2605,12 @@ function renderInformationPhase(room) {
       }
       html += `<hr><button id="btn-info-finish" class="primary">Finished — Continue</button>`;
     } else {
-      html += `<p class="hint">Only Kira can write a name in the Death Note, swap it, or end this phase — chat with them below.</p>`;
+      html += `<p class="hint">Only the Mole can write a name in the Dossier, swap it, or end this phase — chat with them below.</p>`;
 
       if (amMisa && !room.misaEyesUsed) {
         const eyesTargets = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && id !== myPlayerId && id !== room.kiraPlayerId);
         html += `<hr><div class="card">
-          <h3>👁 Shinigami Eyes (one-time)</h3>
+          <h3>👁 Decrypt (one-time)</h3>
           <p class="hint">Trade the rest of this turn to instantly learn part of someone's real name — no mission needed.</p>`;
         if (eyesTargets.length === 0) {
           html += `<p class="hint">No valid targets remain.</p>`;
@@ -2611,7 +2619,7 @@ function renderInformationPhase(room) {
             <select id="eyes-target">${eyesTargets.map(id => `<option value="${id}">${players[id].label} — ${esc(players[id].name)}</option>`).join('')}</select>
             <label>Which part of their name?</label>
             <select id="eyes-part"><option value="first">First name</option><option value="last">Last name</option></select>
-            <button id="btn-eyes-submit" class="danger">Use Shinigami Eyes</button>`;
+            <button id="btn-eyes-submit" class="danger">Use Decrypt</button>`;
         }
         html += `</div>`;
       }
@@ -2619,31 +2627,31 @@ function renderInformationPhase(room) {
   } else if (amMello) {
     const stealResult = info.stealResult;
     if (stealResult && stealResult.success && stealResult.victim === myPlayerId) {
-      html += `<p class="hint"><strong>Your Death Note has been stolen. You are now Mello.</strong></p>`;
+      html += `<p class="hint"><strong>Your Dossier has been stolen. You are now the Freelancer.</strong></p>`;
     }
     if (info.melloDone) {
       html += `<p class="hint">Done. Waiting for the others to finish...</p>`;
     } else {
       const attemptsUsed = (secrets[room.melloPlayerId] && secrets[room.melloPlayerId].wrongStealCount) || 0;
       const targets = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && id !== room.melloPlayerId);
-      html += `<p><strong>Attempt to steal the Death Note?</strong></p>
+      html += `<p><strong>Attempt to steal the Dossier?</strong></p>
         <p class="hint">${2 - attemptsUsed} attempt(s) remaining, for as long as you hold this role. Fail both, and you're eliminated.</p>`;
       if (targets.length === 0) {
         html += `<p class="hint">No valid targets remain.</p><button id="btn-mello-finish" class="primary">Continue</button>`;
       } else {
-        html += `<label>Who has the Death Note?</label>
+        html += `<label>Who has the Dossier?</label>
           <select id="steal-target">${targets.map(id => `<option value="${id}">${players[id].label} — ${esc(players[id].name)}</option>`).join('')}</select>
           <button id="btn-steal-submit" class="danger">Attempt Steal</button>
           <hr><button id="btn-mello-finish" class="secondary">Don't Steal — Continue</button>`;
       }
     }
   } else {
-    const melloWaiting = melloStillNeedsToAct(room) ? `<br>Mello is ${info.melloDone ? 'done' : 'deciding'}...` : '';
-    const detectiveLabel = room.nActive ? 'N' : 'L';
+    const melloWaiting = melloStillNeedsToAct(room) ? `<br>The Freelancer is ${info.melloDone ? 'done' : 'deciding'}...` : '';
+    const detectiveLabel = room.nActive ? 'the Interrogator' : 'the Spymaster';
     const detectiveVerb = room.nActive ? 'building a case' : 'reviewing suspects';
     html += `<p class="waiting">Everyone, close your eyes.<br>
-      ${detectiveLabel} is ${info.lDone ? 'done' : detectiveVerb}...<br>
-      Kira and the Follower are ${info.kiraDone ? 'done' : 'strategizing'}...${melloWaiting}</p>
+      ${cap(detectiveLabel)} is ${info.lDone ? 'done' : detectiveVerb}...<br>
+      The Mole and the Handler are ${info.kiraDone ? 'done' : 'strategizing'}...${melloWaiting}</p>
       <p class="hint">Please use this time to take notes, write down suspicions, and write down a plan for next round.</p>`;
   }
   html += `</div>`;
@@ -2844,7 +2852,7 @@ async function sendChatMessage(code, text) {
 async function submitKillGuess(code, targetId, first, last) {
   const beforeKillsUsed = (currentRoomData.info && currentRoomData.info.killsThisPhase) || 0;
   if (beforeKillsUsed >= 2) {
-    return '<p class="hint">You have already killed the maximum of 2 investigators this Information Phase.</p>';
+    return '<p class="hint">You have already killed the maximum of 2 field agents this Intelligence Phase.</p>';
   }
   const before = currentRoomData.secrets && currentRoomData.secrets[targetId];
   if (!before || !before.alive || before.immune) {
@@ -2951,8 +2959,8 @@ function renderGameOver(room) {
   const players = obj(room.players);
   const secrets = obj(room.secrets);
   const info = obj(room.gameOverInfo);
-  const detectiveLabel = room.nActive ? 'N' : 'L';
-  const winTitle = info.winner === 'Kira' ? 'KIRA WINS' : `${detectiveLabel}'S TEAM WINS`;
+  const detectiveLabel = room.nActive ? 'the Interrogator' : 'the Spymaster';
+  const winTitle = info.winner === 'Kira' ? 'THE MOLE WINS' : `${detectiveLabel.toUpperCase()}'S TEAM WINS`;
   let html = `<h1 class="title" style="color:${info.winner === 'Kira' ? 'var(--red-bright)' : 'var(--gold)'}">${winTitle}</h1>
     <div class="card">
       <p>${info.reason || ''}</p>
@@ -2960,11 +2968,7 @@ function renderGameOver(room) {
   Object.keys(players).sort().forEach(id => {
     const s = secrets[id] || {};
     const status = s.alive === false ? '<span class="tag dead">dead</span>' : '';
-    let roleLabel = s.role || '';
-    if (roleLabel === 'Kira' && room.xKiraActive) roleLabel = 'X-Kira';
-    else if (roleLabel === 'L' && room.nActive) roleLabel = 'N';
-    else if (roleLabel === 'KiraFollower' && room.misaActive) roleLabel = 'Misa';
-    else if (roleLabel === 'NPAChief') roleLabel = 'NPA Chief';
+    const roleLabel = cheatRoleLabel(s.role || '', { xKiraEnabled: room.xKiraActive, nEnabled: room.nActive, misaEnabled: room.misaActive });
     html += `<div class="player-row"><span>${players[id].label} — ${esc(players[id].name)}${status}</span><span>${roleLabel} · ${s.firstName || ''} ${s.lastName || ''}</span></div>`;
   });
   html += `<button id="btn-new-game" class="primary">New Game</button></div>`;
