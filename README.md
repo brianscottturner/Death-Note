@@ -337,21 +337,33 @@ implemented.
   those are also enabled) — Misa has no effect in this case, since she
   needs a Follower to replace. If N is enabled, N simply takes the L
   slot — everything else about the split is unchanged.
-- **Playtest cheat mode**: creating a game with the exact custom room
-  code `04KI26` quietly turns on a host-only panel for manually picking
-  which player gets which role, instead of the normal random deal —
-  handy for setting up a specific scenario without redrawing until it
-  happens by chance. Nothing about it is visible to anyone but the host:
-  other players just see the ordinary "waiting for the host to start"
-  lobby text throughout, with no indication a cheat panel exists or is
-  open. Each player's dropdown defaults to 🎲 Random: the host can
-  hand-pick any roles they care about (e.g. "B is Kira") and leave the
-  rest on Random, and on confirm the leftover roles are shuffled out to
-  the Random players. Confirm is only blocked if a role is hand-picked
-  more times than the game holds (the role set still resolves the
-  expansion On/Off/Random settings the normal way first); a
-  Cancel button backs out to the ordinary lobby without dealing
-  anything.
+- **Playtest cheat mode**: a secret, host-only way to choose who gets
+  which role — handy for setting up a specific scenario without redealing
+  until it happens by chance.
+  1. On the start screen, create the game with the custom room code
+     `04KI26` (exactly). Everyone joins with that code as normal.
+  2. Set up any expansions as usual. Once 7–10 players have joined, tap
+     **🎭 Assign Roles & Start** (it replaces the usual *Deal Roles &
+     Start* button, and only the host sees it).
+  3. Each player has a role dropdown that starts on **🎲 Random**. Pick
+     a role for anyone you want to control (e.g. set Investigator B to
+     Kira) and leave everyone else on Random. For example, leave L's
+     player on Random if you want L to be dealt randomly. A counter
+     shows how many of each role you've hand-picked (e.g. "Kira 1/1").
+  4. Tap **Confirm & Start**. Your picks are dealt as chosen, and the
+     remaining roles are shuffled out to the Random players. Leaving
+     everyone on Random is the same as a normal random deal. Confirm is
+     only blocked if you've picked a role more times than the game has
+     (e.g. two Kiras) — a message will tell you to change one.
+  5. **Cancel** backs out to the ordinary lobby without dealing anything.
+
+  Expansion settings set to Random are still decided by coin flip before
+  the dropdowns appear, so the dropdowns only list roles actually in this
+  game. Nothing about cheat mode is visible to anyone but the host:
+  other players just see the ordinary "Waiting for the host to start the
+  game..." message, then their role reveal as normal. (As with the rest
+  of the app, this is honor-system secrecy — someone digging through
+  their browser's developer tools could see the picks.)
 - **Voting**: majority is a strict majority of alive players who voted
   (more than half). Ties or no majority = nothing happens.
 - **Mission team size**: enforced by the app, driven by the round's
