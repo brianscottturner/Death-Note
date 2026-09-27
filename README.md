@@ -3,8 +3,9 @@
 A multiplayer companion app for a Death Note–themed social deduction card
 game (7–10 players), each on their own phone. The app is the "moderator":
 it deals secret roles and names, runs the round structure, and handles the
-information-phase night actions. Missions themselves are resolved with
-physical cards. Game state is synced in real time across devices via
+information-phase night actions. The Mission and Supply Card decks are
+built in too — the app shuffles, deals, and resolves them itself, so no
+physical cards are needed. Game state is synced in real time across devices via
 Firebase Realtime Database; there's still no build step — it's static
 HTML/CSS/JS, hosted on GitHub Pages.
 
