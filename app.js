@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 34;
+const APP_VERSION = 35;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -600,20 +600,20 @@ function renderCheatRoleAssignment(room) {
 
   let html = `<h1 class="title">DEATH NOTE<br><span class="subtitle">Kira's Game</span></h1>
     <div class="card">
-      <p class="hint">🎭 Cheat mode — assign each player's role, then confirm to deal.</p>
+      <p class="hint">🎭 Cheat mode — pick roles for anyone you like. Everyone left on 🎲 Random gets dealt the remaining roles at random.</p>
       <div class="player-list">`;
   ids.forEach(id => {
     html += `<div class="player-row">
       <span>${players[id].label} — ${esc(players[id].name)}${players[id].uid === myUid ? ' (you)' : ''}</span>
       <select class="cheat-role-select" data-id="${id}">
-        <option value="">— choose role —</option>
+        <option value="">🎲 Random</option>
         ${uniqueRoles.map(r => `<option value="${r}" ${assignments[id] === r ? 'selected' : ''}>${cheatRoleLabel(r, enabled)}</option>`).join('')}
       </select>
     </div>`;
   });
   html += `</div>`;
-  html += `<p class="hint">${uniqueRoles.map(r => `${cheatRoleLabel(r, enabled)}: ${got[r] || 0}/${required[r]}`).join(' · ')}</p>`;
-  if (!valid) html += `<p class="hint">Assign every player a role so each count matches exactly before confirming.</p>`;
+  html += `<p class="hint">Picked: ${uniqueRoles.map(r => `${cheatRoleLabel(r, enabled)} ${got[r] || 0}/${required[r]}`).join(' · ')}</p>`;
+  if (!valid) html += `<p class="hint">Too many players are set to the same role — lower one so each count is at most its total.</p>`;
   html += `<button id="btn-cheat-confirm" class="primary" ${valid ? '' : 'disabled'}>Confirm &amp; Start</button>`;
   html += `<button id="btn-cheat-cancel" class="secondary" type="button">Cancel</button>`;
   html += `</div>`;
@@ -768,14 +768,14 @@ function cheatRolePoolCounts(pool) {
   return counts;
 }
 
+// Players the host left on "Random" simply have no entry in `assignments`, so
+// the pick is valid as long as no role is hand-assigned more times than the
+// pool holds -- whatever is left over gets shuffled out to the Random players.
 function cheatAssignmentValid(pool, assignments, playerIds) {
-  if (!playerIds.every(id => assignments[id])) return false;
   const required = cheatRolePoolCounts(pool);
   const got = {};
-  playerIds.forEach(id => { const r = assignments[id]; got[r] = (got[r] || 0) + 1; });
-  const keys = new Set([...Object.keys(required), ...Object.keys(got)]);
-  for (const k of keys) { if ((required[k] || 0) !== (got[k] || 0)) return false; }
-  return true;
+  playerIds.forEach(id => { const r = assignments[id]; if (r) got[r] = (got[r] || 0) + 1; });
+  return Object.keys(got).every(r => got[r] <= (required[r] || 0));
 }
 
 async function openCheatRoleAssignment(code) {
@@ -825,10 +825,20 @@ async function finalizeCheatRoles(code) {
     const assignments = obj(room.cheatAssignments);
     if (!cheatAssignmentValid(pool, assignments, playerIds)) return room;
     const expansions = obj(room.cheatEnabled);
+    // Remove each hand-picked role from the pool once, then shuffle what's
+    // left and deal it to the players the host left on Random.
+    const leftover = Object.values(pool);
+    playerIds.forEach(id => {
+      if (assignments[id]) leftover.splice(leftover.indexOf(assignments[id]), 1);
+    });
+    const randomRoles = shuffle(leftover);
     const firstNames = shuffle(FIRST_NAMES).slice(0, playerIds.length);
     const lastNames = shuffle(LAST_NAMES).slice(0, playerIds.length);
     const secrets = {};
-    playerIds.forEach((id, i) => { secrets[id] = freshSecret(assignments[id], firstNames[i], lastNames[i]); });
+    playerIds.forEach((id, i) => {
+      const role = assignments[id] || randomRoles.pop();
+      secrets[id] = freshSecret(role, firstNames[i], lastNames[i]);
+    });
     finishDealingRoom(room, playerIds, secrets, expansions);
     room.assigningRoles = false;
     delete room.cheatRolePool;

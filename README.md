@@ -344,9 +344,12 @@ implemented.
   happens by chance. Nothing about it is visible to anyone but the host:
   other players just see the ordinary "waiting for the host to start"
   lobby text throughout, with no indication a cheat panel exists or is
-  open. The confirm button stays disabled until every player has a role
-  and the counts exactly match what the game's expansion settings
-  require (still resolving On/Off/Random the normal way first); a
+  open. Each player's dropdown defaults to 🎲 Random: the host can
+  hand-pick any roles they care about (e.g. "B is Kira") and leave the
+  rest on Random, and on confirm the leftover roles are shuffled out to
+  the Random players. Confirm is only blocked if a role is hand-picked
+  more times than the game holds (the role set still resolves the
+  expansion On/Off/Random settings the normal way first); a
   Cancel button backs out to the ordinary lobby without dealing
   anything.
 - **Voting**: majority is a strict majority of alive players who voted
