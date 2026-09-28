@@ -411,8 +411,8 @@ async function joinRoom(code, name) {
   const snap = await get(roomRef);
   if (!snap.exists()) throw new Error('Room not found.');
   const room = snap.val();
-  // Death Note and Blacklist share one database; keep each edition's rooms apart.
-  if (room.edition === 'blacklist') throw new Error('That code is for a Blacklist game, not Death Note.');
+  // The database is shared with another game, whose rooms carry an edition tag.
+  if (room.edition) throw new Error("That code isn't a Death Note game.");
   if (room.status !== 'lobby') throw new Error('This game has already started.');
 
   const playersRef = ref(db, `rooms/${code}/players`);

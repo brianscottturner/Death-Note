@@ -9,31 +9,6 @@ physical cards are needed. Game state is synced in real time across devices via
 Firebase Realtime Database; there's still no build step — it's static
 HTML/CSS/JS, hosted on GitHub Pages.
 
-## Blacklist edition
-
-`blacklist/` is a standalone re-themed copy of the game — **Blacklist:
-Berlin, 1962** — with the same rules and code but an original Cold War
-spy setting, so it doesn't use any Death Note names or card art. Open it
-at `<site>/blacklist/`; the Death Note version stays at the site root.
-
-| Death Note | Blacklist |
-|---|---|
-| Kira / Kira's Follower | the Mole / the Handler |
-| L / Investigators | the Spymaster / Field Agents |
-| Death Note | the Dossier |
-| Information / Deaths Phase | Intelligence Phase / Dawn Report |
-| Watari, NPA Chief, Misa (Task Force) | Aide, Station Chief, Codebreaker (Station Staff) |
-| X-Kira, Mello, N (Special Provisions for Kira) | Sleeper, Freelancer, Interrogator (Deep Cover) |
-| Event cards #2/#4/#5/#6/#8 | Propaganda Broadcast / Defector's Tip / Safe House / The Decoy / Smoking Gun |
-
-Secret identities are built from Cold War–era first and last names
-(Kim Philby, Nikita Khrushchev, Yuri Gagarin, …), shuffled independently
-like the original. Cards are drawn in CSS as case files instead of using
-`cards/*.png`. Both editions share one Firebase database: Blacklist rooms
-carry `edition: 'blacklist'`, and each edition refuses to join the
-other's room codes. Rule changes made to one edition's `app.js` need to
-be copied to the other by hand.
-
 ## How it works
 
 One player creates a game and gets a 6-character room code (or the host
