@@ -8,7 +8,7 @@ const LAST_NAMES = ["Potter", "Weasley", "Everdeen", "Mellark", "Jackson", "Holm
 const LABELS = "ABCDEFGHIJ".split("");
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KIRA_TURN_MS = 2 * 60 * 1000;
-const APP_VERSION = 36;
+const APP_VERSION = 37;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -1130,9 +1130,13 @@ setInterval(() => {
 
 function applyWinCheck(room) {
   if (room.status === 'gameover') return;
-  if ((room.kiraScore || 0) >= 10) {
+  // Burning your own partner scores the usual +2 on the public scoreboard,
+  // but secretly raises the team's win target by 2 -- so it nets nothing
+  // without the scoreboard giving it away.
+  const kiraTarget = room.kiraWinTarget || 10;
+  if ((room.kiraScore || 0) >= kiraTarget) {
     room.status = 'gameover';
-    room.gameOverInfo = { winner: 'Kira', reason: "Kira's team reached 10 points." };
+    room.gameOverInfo = { winner: 'Kira', reason: `Kira's team reached ${kiraTarget} points.` };
     return;
   }
   const detectiveLabel = room.nActive ? 'N' : 'L';
@@ -2549,7 +2553,7 @@ function renderInformationPhase(room) {
     if (stealResult && stealResult.success && stealResult.thief === myPlayerId) {
       html += `<p class="hint"><strong>You successfully stole the Death Note. You are now Kira.</strong></p>`;
     }
-    html += `<p><strong>Kira:</strong> ${kira.label} — ${esc(kira.name)}${follower ? ` &nbsp; <strong>Follower:</strong> ${follower.label} — ${esc(follower.name)}` : ' &nbsp; <em>(no Follower yet)</em>'}</p>
+    html += `<p><strong>Kira:</strong> ${kira.label} — ${esc(kira.name)}${follower ? ` &nbsp; <strong>Follower:</strong> ${follower.label} — ${esc(follower.name)}` : (room.burnedPartnerId ? ' &nbsp; <em>(Follower burned — you need ' + (room.kiraWinTarget || 10) + ' points)</em>' : ' &nbsp; <em>(no Follower yet)</em>')}</p>
       <p class="hint">${follower ? 'Share what you learned during the Mission Phase and strategize.' : "You're operating alone this round."}</p><hr>`;
 
     if (amSittingOut) {
@@ -2581,7 +2585,7 @@ function renderInformationPhase(room) {
       if (killsUsed >= 2) {
         html += `<p class="hint">You've used both kills for this Information Phase.</p>`;
       } else {
-        const targets = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && !secrets[id].immune && id !== room.kiraPlayerId && id !== room.followerPlayerId);
+        const targets = Object.keys(players).filter(id => secrets[id] && secrets[id].alive && !secrets[id].immune && id !== room.kiraPlayerId);
         if (targets.length === 0) {
           html += `<p class="hint">No valid targets remain.</p>`;
         } else {
@@ -2866,6 +2870,11 @@ async function submitKillGuess(code, targetId, first, last) {
       if (targetId === room.watariPlayerId) {
         room.lScore = Math.max(0, (room.lScore || 0) - 3);
       }
+      if (targetId === room.followerPlayerId) {
+        room.kiraWinTarget = (room.kiraWinTarget || 10) + 2;
+        room.burnedPartnerId = targetId;
+        delete room.followerPlayerId;
+      }
       applyWinCheck(room);
     } else {
       target.wrongGuessCount = (target.wrongGuessCount || 0) + 1;
@@ -2880,6 +2889,9 @@ async function submitKillGuess(code, targetId, first, last) {
   const target = newRoom.secrets[targetId];
   const targetLabel = newRoom.players[targetId].label;
   if (before.alive && !target.alive) {
+    if (newRoom.burnedPartnerId === targetId) {
+      return `<p><strong>Correct! ${targetLabel} has been killed.</strong></p><p class="hint">You burned your own Follower. You're on your own now, and your team needs ${newRoom.kiraWinTarget} points to win instead of 10. Nobody else is told.</p>`;
+    }
     return `<p><strong>Correct! ${targetLabel} has been killed.</strong></p>`;
   }
   if (before.wrongGuessCount !== target.wrongGuessCount) {
@@ -2955,11 +2967,11 @@ function renderGameOver(room) {
   const winTitle = info.winner === 'Kira' ? 'KIRA WINS' : `${detectiveLabel}'S TEAM WINS`;
   let html = `<h1 class="title" style="color:${info.winner === 'Kira' ? 'var(--red-bright)' : 'var(--gold)'}">${winTitle}</h1>
     <div class="card">
-      <p>${info.reason || ''}</p>
+      <p>${info.reason || ''}</p>${room.burnedPartnerId ? `<p class="hint">Kira's team burned its own Follower, so it needed ${room.kiraWinTarget || 10} points to win instead of 10.</p>` : ''}
       <h3>Full Reveal</h3>`;
   Object.keys(players).sort().forEach(id => {
     const s = secrets[id] || {};
-    const status = s.alive === false ? '<span class="tag dead">dead</span>' : '';
+    const status = s.alive === false ? `<span class="tag dead">${id === room.burnedPartnerId ? 'burned by Kira' : 'dead'}</span>` : '';
     let roleLabel = s.role || '';
     if (roleLabel === 'Kira' && room.xKiraActive) roleLabel = 'X-Kira';
     else if (roleLabel === 'L' && room.nActive) roleLabel = 'N';
