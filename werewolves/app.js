@@ -419,6 +419,13 @@ function renderNight(me) {
     const voters = E.stepActors(r, id).filter(p => p !== me && acts[p] && acts[p].t);
     if (voters.length) html += `<p class="hint">Votes so far: ${voters.map(p => `${esc(pname(p))} → <b>${esc(pname(acts[p].t))}</b>${acts[p].done ? ' ✔' : ''}`).join(', ')}</p>`;
   }
+  // Werewolves vote live until they all agree (or time runs out): no Confirm button.
+  if (id === 'werewolves') {
+    const agreed = E.wolfConsensus(r);
+    if (agreed) html += `<p class="result">🐺 The pack agrees on <b>${esc(pname(agreed))}</b>. You can still change your vote for a few seconds.</p>`;
+    else if (g.stepDeadline) html += `<p class="hint">Time left to agree: <b data-until="${g.stepDeadline}"></b>. If you don't agree in time, the player with the most votes dies.</p>`;
+    return html + `</div>`;
+  }
   const ok = formValid(form.fields, draft.values);
   html += `<button class="primary" data-act="submitStep" ${ok ? '' : 'disabled'}>${form.fields.length ? 'Confirm' : 'OK'}</button></div>`;
   return html;
@@ -559,7 +566,9 @@ function renderVote(me) {
   alive.filter(p => p !== me).forEach(p => {
     html += `<button class="choice ${voteDraft.t === p ? 'selected' : ''}" data-act="votePick" data-val="${p}">${esc(pname(p))}</button>`;
   });
-  html += `<button class="choice ${voteDraft.t === 'skip' ? 'selected' : ''}" data-act="votePick" data-val="skip">Skip (nobody)</button></div>`;
+  // Skipping is only allowed on the first day.
+  if (g.night === 1) html += `<button class="choice ${voteDraft.t === 'skip' ? 'selected' : ''}" data-act="votePick" data-val="skip">Skip (nobody)</button>`;
+  html += `</div>${g.night === 1 ? '' : '<p class="hint">After the first day, you must vote for someone.</p>'}`;
   if (isDict) {
     html += `<label class="toggle"><input type="checkbox" data-act="dictPower" ${voteDraft.power ? 'checked' : ''}>
       <span><b>Use my Dictator power</b><br><span class="hint">Announce it out loud! Your pick is lynched immediately, and you die too. Without this, your vote doesn't count.</span></span></label>`;
@@ -751,6 +760,24 @@ function goTo(r, next) {
 }
 function addAnnounce(r, lines) { r.g.announce = [...arr(r.g.announce), ...lines]; }
 
+// The pack keeps voting until everyone agrees, then gets a few seconds to
+// change their minds. After 45 seconds, the player with the most votes dies.
+const WOLF_VOTE_MS = 45000;
+async function runWolfVote(idx) {
+  const deadline = Date.now() + WOLF_VOTE_MS;
+  await tx(r => { if (r.g.stepIdx === idx) r.g.stepDeadline = deadline; });
+  while (room.g.stepIdx === idx) {
+    const left = deadline - Date.now();
+    if (left <= 0) break;
+    const why = await waitFor(r => r.g.stepIdx !== idx || !!E.wolfConsensus(r), left);
+    if (why !== 'ok') break; // time ran out, or skipped
+    const agreed = E.wolfConsensus(room);
+    if (await pause(Math.min(3000, Math.max(0, deadline - Date.now()))) === 'skip') break;
+    if (E.wolfConsensus(room) && E.wolfConsensus(room) === agreed) break;
+  }
+  await tx(r => { r.g.stepDeadline = null; });
+}
+
 async function tick() {
   const g = room.g;
   switch (g.phase) {
@@ -770,7 +797,8 @@ async function tick() {
       const id = steps[idx];
       if (!g.stepOpen) await tx(r => { if (r.g.stepIdx === idx) r.g.stepOpen = true; });
       await say(E.wakeLine(room, id));
-      if (E.stepActors(room, id).length) await waitFor(r => r.g.stepIdx !== idx || E.stepDone(r, id));
+      if (id === 'werewolves' && E.wolfVoters(room).length) await runWolfVote(idx);
+      else if (id !== 'werewolves' && E.stepActors(room, id).length) await waitFor(r => r.g.stepIdx !== idx || E.stepDone(r, id));
       else await pause(fakeMs());
       await gate();
       await tx(r => { if (r.g.stepIdx === idx) r.g.stepOpen = false; });

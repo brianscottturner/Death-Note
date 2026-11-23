@@ -174,7 +174,7 @@ export const STEPS = {
   glitch:     { roles: ['glitch'], wake: 'Glitch, wake up. You may choose someone to kill, and someone to hack.', sleep: 'Glitch, go back to sleep.' },
   cultist:    { roles: ['cultist'], wake: 'Cultist, wake up. You may choose someone to recruit as your Follower.', sleep: 'Cultist, go back to sleep.' },
   jackalRecruit: { roles: ['jackal'], wake: 'Jackal, wake up. You may choose someone to recruit as your Sidekick.', sleep: 'Jackal, go back to sleep.' },
-  werewolves: { roles: WOLF_WAKERS, wake: 'Werewolves, wake up. Look at each other, and choose your victim on your phones.', sleep: 'Werewolves, go back to sleep.' },
+  werewolves: { roles: WOLF_WAKERS, wake: 'Werewolves, wake up. Look at each other, and agree on your victim on your phones.', sleep: 'Werewolves, go back to sleep.' },
   assassin:   { roles: ['assassin'], wake: "Assassin, wake up. You may guess someone's role. If you're wrong, you die.", sleep: 'Assassin, go back to sleep.' },
   jackal:     { roles: ['jackal'], wake: 'Jackal and Sidekick, wake up. Choose your victim together.', sleep: 'Jackal and Sidekick, go back to sleep.' },
   juggernaut: { roles: ['juggernaut'], wake: 'Juggernaut, wake up. Choose who to kill.', sleep: 'Juggernaut, go back to sleep.' },
@@ -236,7 +236,20 @@ export function stepActors(r, id) {
   if (id === 'jackalRecruit') return ids.filter(p => roleOf(r, p) === 'jackal');
   return ids.filter(p => STEPS[id].roles.includes(roleOf(r, p)));
 }
+// Werewolves who vote on the pack's kill tonight (a Sidekick who used to be
+// a werewolf wakes with them but doesn't vote).
+export function wolfVoters(r) {
+  return stepActors(r, 'werewolves').filter(p => teamOf(r, p) === 'wolves');
+}
+// The victim if every voting werewolf has picked the same player, else null.
+export function wolfConsensus(r) {
+  const voters = wolfVoters(r);
+  const acts = actionsFor(r, 'werewolves');
+  const picks = voters.map(p => (acts[p] || {}).t || null);
+  return voters.length && picks[0] && picks.every(t => t === picks[0]) ? picks[0] : null;
+}
 export function stepDone(r, id) {
+  if (id === 'werewolves') return !!wolfConsensus(r);
   const acts = actionsFor(r, id);
   return stepActors(r, id).every(p => acts[p] && acts[p].done);
 }
@@ -273,7 +286,7 @@ export function stepForm(r, id, pid) {
       break;
     }
     case 'medic':
-      P('t', 'Choose a player to shield', alivePlayers(r));
+      P('t', 'Choose a player to shield', others(r, pid));
       break;
     case 'oracle':
       P('t', 'Choose your target', others(r, pid));
@@ -286,7 +299,7 @@ export function stepForm(r, id, pid) {
       const pack = stepActors(r, id).filter(p => p !== pid);
       info.push(pack.length ? `Awake with you: ${pack.map(p => `<b>${pname(r, p)}</b> (${roleName(roleOf(r, p))})`).join(', ')}` : "You're the only one awake.");
       if (teamOf(r, pid) === 'wolves') {
-        P('t', 'Vote for the victim. The pack can see your vote.', alivePlayers(r).filter(p => teamOf(r, p) !== 'wolves'), { live: true });
+        P('t', 'Choose the victim. Keep changing your vote until the whole pack agrees.', others(r, pid), { live: true });
       } else {
         info.push("You're the Jackal's Sidekick now, not a werewolf. You can't vote with the pack, so just blend in.");
       }
@@ -295,7 +308,7 @@ export function stepForm(r, id, pid) {
     case 'jackal': {
       const partner = stepActors(r, id).filter(p => p !== pid);
       if (partner.length) info.push(`Awake with you: ${partner.map(p => `<b>${pname(r, p)}</b> (${roleName(roleOf(r, p))})`).join(', ')}`);
-      P('t', 'Vote for the victim', alivePlayers(r).filter(p => teamOf(r, p) !== 'jackal'), { live: true });
+      P('t', 'Vote for the victim', others(r, pid), { live: true });
       break;
     }
     case 'cultist':
@@ -444,7 +457,7 @@ export function applyStepEnd(r, id) {
       }
       case 'cupid': {
         const pair = arr(a.pair);
-        if (pair.length === 2) g.lovers = pair;
+        if (pair.length === 2) { g.lovers = pair; g.cupid = pid; }
         break;
       }
       case 'medic': if (a.t) g.shield = { by: pid, t: a.t }; break;
@@ -663,10 +676,18 @@ export function resolveVote(r) {
     if (shown.length) {
       lines.push('The votes: ' + shown.map(t => `${t === 'skip' ? 'Skip' : pname(r, t)}, ${tally[t]} vote${tally[t] === 1 ? '' : 's'}`).join('. ') + '.');
     }
+    const label = (t) => t === 'skip' ? 'Skip' : pname(r, t);
+    let chosen = null;
     if (!max) lines.push('Nobody voted. Nobody is voted out today.');
-    else if (top.length > 1) lines.push("It's a tie. Nobody is voted out today.");
-    else if (top[0] === 'skip') lines.push('The town chose not to vote anyone out today.');
-    else { lynched = top[0]; lines.push(`The town has voted out ${pname(r, lynched)}.`); }
+    else if (top.length > 1) {
+      // A tie is broken randomly.
+      chosen = pick(top);
+      const names = top.map(label);
+      const list = names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+      lines.push(`It's a tie between ${list}. The app randomly chose ${label(chosen)}.`);
+    } else chosen = top[0];
+    if (chosen === 'skip') lines.push('The town chose not to vote anyone out today.');
+    else if (chosen) { lynched = chosen; lines.push(`The town has voted out ${pname(r, lynched)}.`); }
   }
   g.swap = null;
   g.votes = {};
@@ -701,7 +722,8 @@ export function checkWin(r) {
   if (!al.length) { g.winner = { team: 'none', players: [], text: 'Everyone is dead. Nobody wins!' }; return g.winner; }
   const l = lovers(r);
   if (l.length === 2 && al.length <= 3 && l.every(p => al.includes(p))) {
-    g.winner = { team: 'lovers', players: l, text: `The Lovers, ${namesList(r, l)}, made it to the final ${al.length}. The Lovers win!` };
+    const cupidLine = g.cupid ? ` Cupid, ${pname(r, g.cupid)}, wins with them!` : '';
+    g.winner = { team: 'lovers', players: uniq([...l, ...(g.cupid ? [g.cupid] : [])]), text: `The Lovers, ${namesList(r, l)}, made it to the final ${al.length}. The Lovers win!${cupidLine}` };
     return g.winner;
   }
   const killers = uniq(al.map(p => teamOf(r, p)).filter(t => KILLER_TEAMS.includes(t)));

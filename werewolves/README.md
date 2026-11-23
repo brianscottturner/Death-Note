@@ -70,8 +70,17 @@ are gone.
 These are the places where the role descriptions left a choice open. Change
 them in `engine.js` if you play differently.
 
-- **Werewolf / Jackal kills**: each member votes on their phone, and teammates
-  see each other's votes live. Most votes wins. Ties are broken randomly.
+- **Werewolf kill**: the werewolves vote on their phones and see each other's
+  votes live. They keep changing votes until they all pick the same player.
+  Once they agree, they get 3 seconds to change their minds. If they haven't
+  agreed after 45 seconds, the player with the most votes dies (ties broken
+  randomly). A hacked werewolf doesn't vote.
+- **Jackal and Sidekick kill**: both vote and confirm. Most votes wins, and ties
+  are broken randomly. If the Jackal dies, the Sidekick keeps killing alone but
+  can't recruit.
+- **Any target**: killers may target their own teammates (a big-brain play),
+  but not themselves.
+- **Medic** can't shield themselves.
 - **Medic shield** is placed on the first night. If someone becomes the Medic
   later (an Amnesiac copying a dead Medic), they wake the next night to place
   their own shield. The shield blocks every kill (night kills and the Hunter's shot),
@@ -89,8 +98,9 @@ them in `engine.js` if you play differently.
   night.
 - **Detective** sees whether a player has ever successfully killed someone.
 - **Swapper** swaps the votes *received* by the two chosen players.
-- **Votes**: most votes wins. A tie, or "Skip" winning, means nobody is voted
-  out. The total for each player is announced (after any Swapper swap), but
+- **Votes**: most votes wins. A tie is broken randomly by the app. "Skip" is
+  only an option on the first day; after that, everyone must vote for someone.
+  If Skip wins (or wins a tie) on day 1, nobody is voted out. The total for each player is announced (after any Swapper swap), but
   not who voted for whom, so attentive players can try to spot the Mayor's
   extra votes.
 - **Executioner**: if their target dies any way other than a vote, the
@@ -103,10 +113,16 @@ them in `engine.js` if you play differently.
   Amnesiac copying a dead Oracle), they wake the next night to choose a target.
 - **Jester / Executioner wins** end the game immediately.
 - **Lovers**: if one dies, the other dies of a broken heart. If both Lovers are
-  alive when 3 or fewer players are left, they win together.
+  alive when 3 or fewer players are left, they win together, along with Cupid.
+- **Thief** must take one of the two leftover cards. If both are Werewolves,
+  they become one, and the other simply isn't in play. The narration still
+  calls it as if it were.
+- **Amnesiac** gets a fresh copy of the role, e.g. both Witch potions even if
+  the old Witch used them.
 - **Winning**: Villagers win when no killers are left. A killer team
   (Werewolves, Arsonist, Jackal, Juggernaut, Glitch) wins when it's the only
   killer team left and has at least as many living players as everyone else.
+  So the Werewolves can't win while any neutral killer is alive.
 - **Hunter**: the win check waits until any dead Hunter has taken their shot.
 
 ## Testing on one computer

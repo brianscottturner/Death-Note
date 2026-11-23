@@ -36,11 +36,11 @@ export const ROLES = {
   witch:       { name: 'Witch', team: 'village',
     desc: 'You have one save potion and one kill potion for the whole game, used at night. You see who the werewolves and neutral killers are about to kill before you choose.' },
   cupid:       { name: 'Cupid', team: 'village',
-    desc: 'On the first night, you secretly choose two Lovers. If one Lover dies, the other dies of a broken heart. If both Lovers are alive in the final 3, they win together.' },
+    desc: 'On the first night, you secretly choose two Lovers. If one Lover dies, the other dies of a broken heart. If both Lovers are alive in the final 3, they win together, and you win with them.' },
   wizard:      { name: 'Wizard', team: 'village',
     desc: 'Each night, choose two players and learn whether they are on the same team or different teams.' },
   medic:       { name: 'Medic', team: 'village',
-    desc: 'On the first night, shield one player. They are protected from all kills until you die.' },
+    desc: "On the first night, shield one other player (not yourself). They are protected from all kills until you die." },
   vigilante:   { name: 'Vigilante', team: 'village',
     desc: 'Once per game, on any night, you may kill someone with no consequences.' },
   sheriff:     { name: 'Sheriff', team: 'village',
@@ -64,7 +64,7 @@ export const ROLES = {
 
   // ---- Werewolf team ----
   werewolf:    { name: 'Werewolf', team: 'wolves', multi: true,
-    desc: 'Each night, wake up with the werewolves and choose someone to kill.' },
+    desc: 'Each night, wake up with the werewolves and agree on someone to kill. You can even target a fellow werewolf.' },
   assassin:    { name: 'Assassin', team: 'wolves',
     desc: "Wakes up with the werewolves. Each night you may also guess a player's role. If you're right, they die. If you're wrong, you die." },
   morphling:   { name: 'Morphling', team: 'wolves',
