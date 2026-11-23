@@ -606,6 +606,11 @@ export function resolveVote(r) {
     if (sw.length === 2) { const a = tally[sw[0]] || 0; tally[sw[0]] = tally[sw[1]] || 0; tally[sw[1]] = a; }
     const max = Math.max(0, ...Object.values(tally));
     const top = Object.keys(tally).filter(t => tally[t] === max);
+    // Totals are public (after any Swapper swap), so sharp players can spot the Mayor's extra votes.
+    const shown = Object.keys(tally).filter(t => tally[t] > 0).sort((a, b) => tally[b] - tally[a]);
+    if (shown.length) {
+      lines.push('The votes: ' + shown.map(t => `${t === 'skip' ? 'Skip' : pname(r, t)}, ${tally[t]} vote${tally[t] === 1 ? '' : 's'}`).join('. ') + '.');
+    }
     if (!max) lines.push('Nobody voted. Nobody is voted out today.');
     else if (top.length > 1) lines.push("It's a tie. Nobody is voted out today.");
     else if (top[0] === 'skip') lines.push('The town chose not to vote anyone out today.');

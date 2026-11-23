@@ -62,8 +62,9 @@ them in `engine.js` if you play differently.
 - **Detective** sees whether a player has ever successfully killed someone.
 - **Swapper** swaps the votes *received* by the two chosen players.
 - **Votes**: most votes wins. A tie, or "Skip" winning, means nobody is voted
-  out. Only the result is announced, never the counts, so the Mayor's 3 votes
-  stay secret.
+  out. The total for each player is announced (after any Swapper swap), but
+  not who voted for whom, so attentive players can try to spot the Mayor's
+  extra votes.
 - **Executioner**: if their target dies any way other than a vote, the
   Executioner becomes a Jester.
 - **Jester / Executioner wins** end the game immediately.
