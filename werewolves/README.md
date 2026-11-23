@@ -123,6 +123,11 @@ them in `engine.js` if you play differently.
   (Werewolves, Arsonist, Jackal, Juggernaut, Glitch) wins when it's the only
   killer team left and has at least as many living players as everyone else.
   So the Werewolves can't win while any neutral killer is alive.
+- **Two rival killers left**: if exactly 2 players are alive and they're on
+  different killer teams, the day vote is a tie and the app randomly picks who's
+  voted out. If night falls with just those two, the stronger killer wins
+  immediately: Juggernaut, then Glitch, then Jackal/Sidekick, then any
+  Werewolf, then Arsonist.
 - **Hunter**: the win check waits until any dead Hunter has taken their shot.
 
 ## Testing on one computer

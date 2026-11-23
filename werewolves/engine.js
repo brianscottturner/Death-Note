@@ -751,4 +751,28 @@ export function startNight(r) {
   g.kills = [];
   g.steps = buildSteps(r);
   g.announce = [];
+  nightShowdown(r);
+}
+
+// When night falls with exactly 2 players left, on different killer teams,
+// the stronger killer wins straight away.
+export const KILLER_RANK = ['juggernaut', 'glitch', 'jackal', 'wolves', 'arsonist'];
+export function nightShowdown(r) {
+  const g = r.g;
+  if (g.winner) return null;
+  const al = alivePlayers(r);
+  if (al.length !== 2) return null;
+  const [a, b] = al;
+  const ta = teamOf(r, a), tb = teamOf(r, b);
+  if (ta === tb || !KILLER_RANK.includes(ta) || !KILLER_RANK.includes(tb)) return null;
+  const win = KILLER_RANK.indexOf(ta) < KILLER_RANK.indexOf(tb) ? a : b;
+  const lose = win === a ? b : a;
+  const desc = (p) => `${pname(r, p)} (${aRole(roleOf(r, p))})`;
+  const wt = teamOf(r, win);
+  g.winner = {
+    team: wt,
+    players: playerIds(r).filter(p => teamOf(r, p) === wt),
+    text: `Night ${g.night}. Only ${desc(win)} and ${desc(lose)} remain. The ${teamName(wt)} ${wt === 'wolves' ? 'are' : 'is'} stronger. The ${teamName(wt)} ${wt === 'wolves' ? 'win' : 'wins'}!`,
+  };
+  return g.winner;
 }

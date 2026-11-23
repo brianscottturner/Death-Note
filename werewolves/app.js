@@ -755,8 +755,11 @@ function afterDeaths(r, next) {
   goTo(r, next);
 }
 function goTo(r, next) {
-  if (next === 'night') E.startNight(r);
-  else { r.g.phase = 'discussion'; r.g.discussEnds = null; }
+  if (next === 'night') {
+    E.startNight(r);
+    // Two rival killers left at nightfall: the stronger one wins at once.
+    if (r.g.winner) { r.status = 'over'; r.g.phase = 'over'; }
+  } else { r.g.phase = 'discussion'; r.g.discussEnds = null; }
 }
 function addAnnounce(r, lines) { r.g.announce = [...arr(r.g.announce), ...lines]; }
 
