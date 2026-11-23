@@ -130,10 +130,12 @@ function assignExecTarget(r, pid) {
 
 /* ---------------- night steps ---------------- */
 
-// The order roles wake in. `first` = first night only.
-export const STEP_ORDER = ['thief', 'cupid', 'lovers', 'medic', 'oracle', 'glitch', 'werewolves', 'jackal',
-  'juggernaut', 'arsonist', 'vigilante', 'sheriff', 'niceGuesser', 'seer', 'wizard', 'detective',
-  'swapper', 'mortician', 'amnesiac', 'executioner', 'witch'];
+// The order roles wake in. Night 1 runs the first-night list, then the
+// every-night list. Later nights run only the every-night list (plus the
+// Medic / Oracle / Executioner turns described in buildSteps).
+export const FIRST_NIGHT_ORDER = ['thief', 'cupid', 'lovers', 'medic', 'oracle', 'executioner', 'cultist', 'jackalRecruit'];
+export const EVERY_NIGHT_ORDER = ['glitch', 'werewolves', 'assassin', 'juggernaut', 'arsonist', 'jackal', 'seer',
+  'wizard', 'detective', 'sheriff', 'witch', 'niceGuesser', 'vigilante', 'swapper', 'mortician', 'amnesiac'];
 
 export const STEPS = {
   thief:      { first: true, roles: ['thief'], wake: 'Thief, wake up. Look at your phone and choose one of the two unused roles.', sleep: 'Thief, go back to sleep.' },
@@ -142,56 +144,47 @@ export const STEPS = {
   medic:      { roles: ['medic'], wake: 'Medic, wake up. Choose a player to protect with your shield.', sleep: 'Medic, go back to sleep.' },
   oracle:     { roles: ['oracle'], wake: 'Oracle, wake up. Choose your target. If you die, their role will be revealed.', sleep: 'Oracle, go back to sleep.' },
   glitch:     { roles: ['glitch'], wake: 'Glitch, wake up. You may choose someone to kill, and someone to hack.', sleep: 'Glitch, go back to sleep.' },
+  cultist:    { roles: ['cultist'], wake: 'Cultist, wake up. You may choose someone to recruit as your Follower.', sleep: 'Cultist, go back to sleep.' },
+  jackalRecruit: { roles: ['jackal'], wake: 'Jackal, wake up. You may choose someone to recruit as your Sidekick.', sleep: 'Jackal, go back to sleep.' },
   werewolves: { roles: WOLF_WAKERS, wake: 'Werewolves, wake up. Look at each other, and choose your victim on your phones.', sleep: 'Werewolves, go back to sleep.' },
-  jackal:     { roles: ['jackal'], wake: 'Jackal, wake up. Choose your victim.', sleep: 'Jackal, go back to sleep.' },
+  assassin:   { roles: ['assassin'], wake: "Assassin, wake up. You may guess someone's role. If you're wrong, you die.", sleep: 'Assassin, go back to sleep.' },
+  jackal:     { roles: ['jackal'], wake: 'Jackal and Sidekick, wake up. Choose your victim together.', sleep: 'Jackal and Sidekick, go back to sleep.' },
   juggernaut: { roles: ['juggernaut'], wake: 'Juggernaut, wake up. Choose who to kill.', sleep: 'Juggernaut, go back to sleep.' },
   arsonist:   { roles: ['arsonist'], wake: "Arsonist, wake up. Douse a player, or ignite everyone you've doused.", sleep: 'Arsonist, go back to sleep.' },
   vigilante:  { roles: ['vigilante'], wake: 'Vigilante, wake up. You may use your one shot tonight.', sleep: 'Vigilante, go back to sleep.' },
   sheriff:    { roles: ['sheriff'], wake: "Sheriff, wake up. You may try to kill someone. If they're a villager, you will die instead.", sleep: 'Sheriff, go back to sleep.' },
-  niceGuesser:{ roles: ['niceGuesser'], wake: "Nice Guesser, wake up. You may guess someone's role.", sleep: 'Nice Guesser, go back to sleep.' },
+  niceGuesser:{ roles: ['niceGuesser'], wake: "Nice Guesser, wake up. You may guess someone's role. If you're wrong, you die.", sleep: 'Nice Guesser, go back to sleep.' },
   seer:       { roles: ['seer'], wake: 'Seer, wake up. Choose a player whose role you want to see.', sleep: 'Seer, go back to sleep.' },
   wizard:     { roles: ['wizard'], wake: 'Wizard, wake up. Choose two players to compare.', sleep: 'Wizard, go back to sleep.' },
   detective:  { roles: ['detective'], wake: 'Detective, wake up. Choose a player to investigate.', sleep: 'Detective, go back to sleep.' },
   swapper:    { roles: ['swapper'], wake: "Swapper, wake up. You may choose two players whose votes will be swapped tomorrow.", sleep: 'Swapper, go back to sleep.' },
   mortician:  { roles: ['mortician'], wake: 'Mortician, wake up. Look at your phone to see the roles of the dead.', sleep: 'Mortician, go back to sleep.' },
   amnesiac:   { roles: ['amnesiac'], wake: 'Amnesiac, wake up. Predict who will die tonight.', sleep: 'Amnesiac, go back to sleep.' },
-  // The Executioner wakes every night. Once their target dies they're an
-  // Amnesiac, but they keep waking here (never with the original Amnesiac).
+  // The Executioner wakes on night 1 to see their target, then every night
+  // after the Amnesiac. Once their target dies they're an Amnesiac, but they
+  // keep waking here (never with the original Amnesiac).
   executioner: { roles: ['executioner'], wake: 'Executioner, wake up. Look at your phone.', sleep: 'Executioner, go back to sleep.' },
   witch:      { roles: ['witch'], wake: "Witch, wake up. Look at your phone to see tonight's victims. You may use your potions.", sleep: 'Witch, go back to sleep.' },
 };
 
-export function wakeLine(r, id) {
-  if (id === 'jackal') {
-    return r.g.night === 1
-      ? 'Jackal, wake up. Choose someone to recruit as your Sidekick, and choose your victim.'
-      : 'Jackal and Sidekick, wake up. Choose your victim together.';
-  }
-  if (id === 'werewolves' && r.g.night === 1 && inDeck(r, ['cultist'])) {
-    return 'Werewolves, wake up. Look at each other, and choose your victim on your phones. Cultist, you may also recruit a follower.';
-  }
-  return STEPS[id].wake;
-}
-export function sleepLine(r, id) {
-  if (id === 'jackal' && r.g.night > 1) return 'Jackal and Sidekick, go back to sleep.';
-  return STEPS[id].sleep;
-}
+export function wakeLine(r, id) { return STEPS[id].wake; }
+export function sleepLine(r, id) { return STEPS[id].sleep; }
 
 // Steps for the current night. Every role in the deck (including the
 // Thief's two unused cards) is called, even if nobody alive has it, so the
 // narration never gives away which roles are out of the game.
 export function buildSteps(r) {
   const n = r.g.night;
-  return STEP_ORDER.filter(id => {
-    const st = STEPS[id];
-    if (st.first && n > 1) return false;
-    if (id === 'lovers') return !!r.g.lovers || inDeck(r, ['cupid']);
-    if (id === 'mortician' && n === 1) return false;
-    // The Medic and Oracle wake on the first night, and again on any later
-    // night when someone has newly become one (an Amnesiac copying a dead one).
-    if (id === 'medic' || id === 'oracle') return n === 1 ? inDeck(r, [id]) : needsSetup(r, id).length > 0;
-    return inDeck(r, st.roles);
-  });
+  const has = (id) => inDeck(r, STEPS[id].roles);
+  if (n === 1) {
+    const first = FIRST_NIGHT_ORDER.filter(id => id === 'lovers' ? (!!r.g.lovers || inDeck(r, ['cupid'])) : has(id));
+    return [...first, ...EVERY_NIGHT_ORDER.filter(id => id !== 'mortician' && has(id))];
+  }
+  // The Medic and Oracle wake again on a later night only when someone has
+  // newly become one (an Amnesiac copying a dead one).
+  const setup = ['medic', 'oracle'].filter(id => needsSetup(r, id).length > 0);
+  const late = has('executioner') ? ['executioner'] : [];
+  return [...setup, ...EVERY_NIGHT_ORDER.filter(has), ...late];
 }
 
 // Living Medics who haven't placed their shield yet / Oracles who haven't chosen a target.
@@ -212,6 +205,7 @@ export function stepActors(r, id) {
   if (id === 'executioner') return ids.filter(p => roleOf(r, p) === 'executioner' || isExecAmnesiac(r, p));
   if (id === 'werewolves') return ids.filter(p => wakesWithWolves(r, p));
   if (id === 'jackal') return ids.filter(p => roleOf(r, p) === 'jackal' || roleOf(r, p) === 'sidekick');
+  if (id === 'jackalRecruit') return ids.filter(p => roleOf(r, p) === 'jackal');
   return ids.filter(p => STEPS[id].roles.includes(roleOf(r, p)));
 }
 export function stepDone(r, id) {
@@ -262,13 +256,6 @@ export function stepForm(r, id, pid) {
       info.push(pack.length ? `Awake with you: ${pack.map(p => `<b>${pname(r, p)}</b> (${roleName(roleOf(r, p))})`).join(', ')}` : "You're the only one awake.");
       if (teamOf(r, pid) === 'wolves') {
         P('t', 'Vote for the victim. The pack can see your vote.', alivePlayers(r).filter(p => teamOf(r, p) !== 'wolves'), { live: true });
-        if (role === 'assassin') {
-          P('gp', "Assassin: guess a player's role (optional)", others(r, pid), { min: 0 });
-          fields.push({ key: 'gr', type: 'role', label: 'Their role is…', min: 1, options: roleOptions(r), showIf: v => !!v.gp });
-        }
-        if (role === 'cultist' && g.night === 1) {
-          P('rec', 'Cultist: recruit a Follower (optional)', alivePlayers(r).filter(p => teamOf(r, p) !== 'wolves'), { min: 0 });
-        }
       } else {
         info.push("You're the Jackal's Sidekick now, not a werewolf. You can't vote with the pack, so just blend in.");
       }
@@ -278,9 +265,18 @@ export function stepForm(r, id, pid) {
       const partner = stepActors(r, id).filter(p => p !== pid);
       if (partner.length) info.push(`Awake with you: ${partner.map(p => `<b>${pname(r, p)}</b> (${roleName(roleOf(r, p))})`).join(', ')}`);
       P('t', 'Vote for the victim', alivePlayers(r).filter(p => teamOf(r, p) !== 'jackal'), { live: true });
-      if (role === 'jackal' && g.night === 1) P('rec', 'Recruit a Sidekick (optional)', others(r, pid), { min: 0 });
       break;
     }
+    case 'cultist':
+      P('rec', 'Recruit a Follower (optional)', alivePlayers(r).filter(p => teamOf(r, p) !== 'wolves'), { min: 0 });
+      break;
+    case 'jackalRecruit':
+      P('rec', 'Recruit a Sidekick (optional)', others(r, pid), { min: 0 });
+      break;
+    case 'assassin':
+      P('gp', "Guess a player's role (optional). If you're wrong, you die.", others(r, pid), { min: 0 });
+      fields.push({ key: 'gr', type: 'role', label: 'Their role is…', min: 1, options: roleOptions(r), showIf: v => !!v.gp });
+      break;
     case 'juggernaut': {
       const n = juggernautKillsPerNight(r, pid);
       info.push(`Kills so far: ${obj(g.jugKills)[pid] || 0}. You can kill ${n} tonight.`);
@@ -329,7 +325,8 @@ export function stepForm(r, id, pid) {
     case 'executioner':
       if (role === 'executioner') {
         const t = obj(g.execTarget)[pid];
-        info.push(t ? `Your target, <b>${pname(r, t)}</b>, is still alive. Nothing to do tonight.` : 'Nothing to do tonight.');
+        if (g.night === 1) info.push(t ? `Your target is <b>${pname(r, t)}</b>. Get them voted out to win!` : 'You have no target.');
+        else info.push(t ? `Your target, <b>${pname(r, t)}</b>, is still alive. Nothing to do tonight.` : 'Nothing to do tonight.');
         break;
       }
       info.push('Your target died before being voted out, so you are now an Amnesiac.');
@@ -424,13 +421,9 @@ export function applyStepEnd(r, id) {
         if (a.hack) g.hacked = a.hack;
         addKill(r, a.kill, [pid], 'kill');
         break;
-      case 'werewolves':
-        if (role === 'assassin') resolveGuess(r, pid, a);
-        if (role === 'cultist' && a.rec) recruit(r, 'cult', pid, a.rec);
-        break;
-      case 'jackal':
-        if (role === 'jackal' && a.rec) recruit(r, 'jackal', pid, a.rec);
-        break;
+      case 'assassin': resolveGuess(r, pid, a); break;
+      case 'cultist': if (a.rec) recruit(r, 'cult', pid, a.rec); break;
+      case 'jackalRecruit': if (a.rec) recruit(r, 'jackal', pid, a.rec); break;
       case 'juggernaut': arr(a.ts).forEach(t => addKill(r, t, [pid], 'jug')); break;
       case 'arsonist': {
         g.doused = obj(g.doused);

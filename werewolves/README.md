@@ -33,11 +33,25 @@ the same Skip under **Host controls**.
 
 ## Night order
 
-Thief → Cupid → Lovers (first night only) → Medic → Oracle (first night, or
-the night after someone newly becomes one) → Glitch →
-Werewolves (with Assassin, Morphling, Cultist, Follower) → Jackal (+ Sidekick)
-→ Juggernaut → Arsonist → Vigilante → Sheriff → Nice Guesser → Seer → Wizard →
-Detective → Swapper → Mortician (from night 2) → Amnesiac → Executioner → Witch.
+**First night only:** Thief → Cupid → Lovers → Medic → Oracle → Executioner →
+Cultist → Jackal (recruits a Sidekick)
+
+**Every night (including the first, right after the list above):** Glitch →
+Werewolves (all of them together) → Assassin → Juggernaut → Arsonist → Jackal
+and Sidekick → Seer → Wizard → Detective → Sheriff → Witch → Nice Guesser →
+Vigilante → Swapper → Mortician (from night 2) → Amnesiac
+
+**Extra turns on later nights:**
+- The Medic or Oracle is called at the start of the night after someone newly
+  becomes one (an Amnesiac copying a dead one), so they can place their shield
+  or choose a target.
+- From night 2 on, the Executioner is called again after the Amnesiac every
+  night. If their target died outside a vote, they're an Amnesiac now and make
+  their prediction then.
+
+Because recruits take effect immediately, a Follower the Cultist recruits on
+night 1 already wakes with the werewolves that night. Likewise, a new Sidekick
+joins the Jackal's kill that night.
 
 Every role in the deck is called each night, including the Thief's two unused
 cards and roles whose players are dead. When nobody can answer, the speaker
@@ -56,7 +70,8 @@ them in `engine.js` if you play differently.
   their own shield. The shield blocks every kill (night kills and the Hunter's shot),
   but not being voted out. It ends when the Medic dies or loses the role.
 - **Witch** sees who is about to die, and can save one of them. Her own kill
-  potion can't be saved.
+  potion can't be saved. Because she wakes before the Nice Guesser and
+  Vigilante, she can't save their victims (she doesn't know about them yet).
 - **Sheriff**: "villager" means anyone on the Villager team.
 - **Assassin / Nice Guesser**: one guess per night. A wrong guess kills the
   guesser.
