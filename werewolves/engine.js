@@ -133,14 +133,14 @@ function assignExecTarget(r, pid) {
 // The order roles wake in. `first` = first night only.
 export const STEP_ORDER = ['thief', 'cupid', 'lovers', 'medic', 'oracle', 'glitch', 'werewolves', 'jackal',
   'juggernaut', 'arsonist', 'vigilante', 'sheriff', 'niceGuesser', 'seer', 'wizard', 'detective',
-  'swapper', 'mortician', 'amnesiac', 'witch'];
+  'swapper', 'mortician', 'amnesiac', 'amnesiacExec', 'witch'];
 
 export const STEPS = {
   thief:      { first: true, roles: ['thief'], wake: 'Thief, wake up. Look at your phone and choose one of the two unused roles.', sleep: 'Thief, go back to sleep.' },
   cupid:      { first: true, roles: ['cupid'], wake: 'Cupid, wake up. Choose the two players who will fall in love.', sleep: 'Cupid, go back to sleep.' },
   lovers:     { first: true, roles: [], wake: 'Lovers, wake up. Look at your phone to see who you are in love with.', sleep: 'Lovers, go back to sleep.' },
   medic:      { roles: ['medic'], wake: 'Medic, wake up. Choose a player to protect with your shield.', sleep: 'Medic, go back to sleep.' },
-  oracle:     { first: true, roles: ['oracle'], wake: 'Oracle, wake up. Choose your target. If you die, their role will be revealed.', sleep: 'Oracle, go back to sleep.' },
+  oracle:     { roles: ['oracle'], wake: 'Oracle, wake up. Choose your target. If you die, their role will be revealed.', sleep: 'Oracle, go back to sleep.' },
   glitch:     { roles: ['glitch'], wake: 'Glitch, wake up. You may choose someone to kill, and someone to hack.', sleep: 'Glitch, go back to sleep.' },
   werewolves: { roles: WOLF_WAKERS, wake: 'Werewolves, wake up. Look at each other, and choose your victim on your phones.', sleep: 'Werewolves, go back to sleep.' },
   jackal:     { roles: ['jackal'], wake: 'Jackal, wake up. Choose your victim.', sleep: 'Jackal, go back to sleep.' },
@@ -155,6 +155,8 @@ export const STEPS = {
   swapper:    { roles: ['swapper'], wake: "Swapper, wake up. You may choose two players whose votes will be swapped tomorrow.", sleep: 'Swapper, go back to sleep.' },
   mortician:  { roles: ['mortician'], wake: 'Mortician, wake up. Look at your phone to see the roles of the dead.', sleep: 'Mortician, go back to sleep.' },
   amnesiac:   { roles: ['amnesiac'], wake: 'Amnesiac, wake up. Predict who will die tonight.', sleep: 'Amnesiac, go back to sleep.' },
+  // An Executioner who turned into an Amnesiac wakes separately, so they never see the original Amnesiac.
+  amnesiacExec: { roles: ['executioner'], wake: 'Amnesiac, wake up. Predict who will die tonight.', sleep: 'Amnesiac, go back to sleep.' },
   witch:      { roles: ['witch'], wake: "Witch, wake up. Look at your phone to see tonight's victims. You may use your potions.", sleep: 'Witch, go back to sleep.' },
 };
 
@@ -184,17 +186,19 @@ export function buildSteps(r) {
     if (st.first && n > 1) return false;
     if (id === 'lovers') return !!r.g.lovers || inDeck(r, ['cupid']);
     if (id === 'mortician' && n === 1) return false;
-    // The Medic wakes on the first night, and again on any later night when
-    // someone has newly become the Medic (e.g. an Amnesiac copying a dead Medic).
-    if (id === 'medic') return n === 1 ? inDeck(r, ['medic']) : medicsNeedingShield(r).length > 0;
+    // The Medic and Oracle wake on the first night, and again on any later
+    // night when someone has newly become one (an Amnesiac copying a dead one).
+    if (id === 'medic' || id === 'oracle') return n === 1 ? inDeck(r, [id]) : needsSetup(r, id).length > 0;
     return inDeck(r, st.roles);
   });
 }
 
-// Living Medics who haven't placed their shield yet.
-function medicsNeedingShield(r) {
-  return alivePlayers(r).filter(p => roleOf(r, p) === 'medic' && !(r.g.shield && r.g.shield.by === p));
+// Living Medics who haven't placed their shield yet / Oracles who haven't chosen a target.
+function needsSetup(r, role) {
+  const placed = role === 'medic' ? r.g.shield : r.g.oracle;
+  return alivePlayers(r).filter(p => roleOf(r, p) === role && !(placed && placed.by === p));
 }
+const isExecAmnesiac = (r, p) => roleOf(r, p) === 'amnesiac' && !!obj(r.g.fromExec)[p];
 
 // Players who are actually awake and acting during a step.
 export function stepActors(r, id) {
@@ -202,7 +206,9 @@ export function stepActors(r, id) {
   const ok = (p) => isAlive(r, p) && g.hacked !== p;
   const ids = playerIds(r).filter(ok);
   if (id === 'lovers') return lovers(r).filter(ok);
-  if (id === 'medic') return medicsNeedingShield(r).filter(ok);
+  if (id === 'medic' || id === 'oracle') return needsSetup(r, id).filter(ok);
+  if (id === 'amnesiac') return ids.filter(p => roleOf(r, p) === 'amnesiac' && !isExecAmnesiac(r, p));
+  if (id === 'amnesiacExec') return ids.filter(p => isExecAmnesiac(r, p));
   if (id === 'werewolves') return ids.filter(p => wakesWithWolves(r, p));
   if (id === 'jackal') return ids.filter(p => roleOf(r, p) === 'jackal' || roleOf(r, p) === 'sidekick');
   return ids.filter(p => STEPS[id].roles.includes(roleOf(r, p)));
@@ -320,6 +326,7 @@ export function stepForm(r, id, pid) {
       break;
     }
     case 'amnesiac':
+    case 'amnesiacExec':
       P('t', 'Who will die tonight? (optional)', others(r, pid), { min: 0 });
       break;
     case 'witch': {
@@ -432,7 +439,7 @@ export function applyStepEnd(r, id) {
         break;
       case 'niceGuesser': resolveGuess(r, pid, a); break;
       case 'swapper': { const ts = arr(a.ts); g.swap = ts.length === 2 ? ts : null; break; }
-      case 'amnesiac': if (a.t) { g.amnesiacGuess = obj(g.amnesiacGuess); g.amnesiacGuess[pid] = a.t; } break;
+      case 'amnesiac': case 'amnesiacExec': if (a.t) { g.amnesiacGuess = obj(g.amnesiacGuess); g.amnesiacGuess[pid] = a.t; } break;
       case 'witch':
         if (a.save && !isUsed(r, pid, 'save')) { used(r, pid).save = true; g.witchSave = a.save; }
         if (a.kill && !isUsed(r, pid, 'kill')) { used(r, pid).kill = true; addKill(r, a.kill, [pid], 'witch'); }
@@ -516,6 +523,7 @@ export function finishMorning(r) {
     if (isAlive(r, pid) && roleOf(r, pid) === 'amnesiac' && !isAlive(r, t) && dead.includes(t)) {
       const newRole = roleOf(r, t);
       g.roles[pid] = newRole;
+      if (g.fromExec) delete g.fromExec[pid];
       if (newRole === 'executioner') assignExecTarget(r, pid);
       note(r, pid, `You predicted correctly! You are now the ${roleName(newRole)}.`);
     }
@@ -554,6 +562,7 @@ export function killPlayers(r, ids, cause) {
       Object.entries(obj(g.execTarget)).forEach(([ex, t]) => {
         if (t === p && isAlive(r, ex) && roleOf(r, ex) === 'executioner') {
           g.roles[ex] = 'amnesiac';
+          g.fromExec = obj(g.fromExec); g.fromExec[ex] = true;
           note(r, ex, `Your target ${pname(r, p)} died before being voted out. You are now the Amnesiac: predict who will die each night to take their role.`);
         }
       });

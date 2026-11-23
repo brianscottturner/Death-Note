@@ -33,10 +33,12 @@ the same Skip under **Host controls**.
 
 ## Night order
 
-Thief → Cupid → Lovers → Medic → Oracle (first night only) → Glitch →
+Thief → Cupid → Lovers (first night only) → Medic → Oracle (first night, or
+the night after someone newly becomes one) → Glitch →
 Werewolves (with Assassin, Morphling, Cultist, Follower) → Jackal (+ Sidekick)
 → Juggernaut → Arsonist → Vigilante → Sheriff → Nice Guesser → Seer → Wizard →
-Detective → Swapper → Mortician (from night 2) → Amnesiac → Witch.
+Detective → Swapper → Mortician (from night 2) → Amnesiac → Amnesiac (former
+Executioner) → Witch.
 
 Every role in the deck is called each night, including the Thief's two unused
 cards and roles whose players are dead. When nobody can answer, the speaker
@@ -69,7 +71,12 @@ them in `engine.js` if you play differently.
   not who voted for whom, so attentive players can try to spot the Mayor's
   extra votes.
 - **Executioner**: if their target dies any way other than a vote, the
-  Executioner becomes an Amnesiac.
+  Executioner becomes an Amnesiac. They wake up on their own, after the
+  original Amnesiac, so the two never see each other. When an Executioner is in
+  the game, this second Amnesiac call happens every night (with a fake pause
+  until it's needed), so it doesn't give anything away.
+- **Oracle** works like the Medic: if someone becomes the Oracle later (an
+  Amnesiac copying a dead Oracle), they wake the next night to choose a target.
 - **Jester / Executioner wins** end the game immediately.
 - **Lovers**: if one dies, the other dies of a broken heart. If both Lovers are
   alive when 3 or fewer players are left, they win together.
