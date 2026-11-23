@@ -92,12 +92,23 @@ them in `engine.js` if you play differently.
   targeted by a Villager-team killer, they still die.
 - **Sheriff**: "villager" means anyone on the Villager team.
 - **Assassin / Nice Guesser**: one guess per night. A wrong guess kills the
-  guesser.
+  guesser. The Assassin can't guess werewolf-team roles, and the Nice Guesser
+  can't guess Villager-team roles. Neither can guess on a player whose role is
+  already public (e.g. revealed by the Oracle).
 - **Cultist / Jackal recruits** take effect immediately. The recruited player
   loses their old power right away, even if that role hasn't woken up yet that
   night.
+- **Morphling**: at the start of the game, the app picks a random Villager-team
+  role from this game's cards (never the Seer) as the Morphling's disguise. The
+  Seer sees that role every time, and the Morphling's phone shows it so they
+  can claim it. If nobody else is on the Villager team, it's a plain Villager.
+  The Wizard sees the Morphling on the Villager team, and the Detective sees
+  them as innocent.
 - **Detective** sees whether a player has ever successfully killed someone.
-- **Swapper** swaps the votes *received* by the two chosen players.
+- **Swapper** swaps the votes *received* by the two chosen players. The swap stays
+  secret until the votes are in. Then the speaker reveals it, before the
+  totals (which already include the swap). If either player died before the
+  vote, the swap is cancelled and never mentioned.
 - **Votes**: most votes wins. A tie is broken randomly by the app. "Skip" is
   only an option on the first day; after that, everyone must vote for someone.
   If Skip wins (or wins a tie) on day 1, nobody is voted out. The total for each player is announced (after any Swapper swap), but

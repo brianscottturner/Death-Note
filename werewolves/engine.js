@@ -56,7 +56,21 @@ export function actionKey(r, stepId) { return `n${r.g.night}_${stepId}`; }
 export function actionsFor(r, stepId) { return obj(obj(r.g.actions)[actionKey(r, stepId)]); }
 
 // What the Seer / Wizard / Detective see. The Morphling looks like a Villager.
-function apparentRole(r, pid) { return roleOf(r, pid) === 'morphling' ? 'villager' : roleOf(r, pid); }
+function apparentRole(r, pid) { return roleOf(r, pid) === 'morphling' ? morphlingDisguise(r, pid) : roleOf(r, pid); }
+// The Villager-team role the Seer sees a Morphling as. Fixed for the whole game.
+export function morphlingDisguise(r, pid) { return obj(r.g.disguise)[pid] || 'villager'; }
+// Picks a random Villager-team role from this game's cards (never the Seer
+// itself, since the Seer would know that's fake).
+function assignDisguise(r, pid) {
+  const pool = arr(r.g.deck).filter(ro => ROLES[ro] && ROLES[ro].team === 'village' && ro !== 'seer');
+  r.g.disguise = obj(r.g.disguise);
+  r.g.disguise[pid] = pool.length ? pick(pool) : 'villager';
+}
+// Setup a role needs when a player gets it (at the deal, or later as Thief/Amnesiac).
+function onRoleGained(r, pid, role) {
+  if (role === 'executioner') assignExecTarget(r, pid);
+  if (role === 'morphling' && !obj(r.g.disguise)[pid]) assignDisguise(r, pid);
+}
 function apparentTeam(r, pid) { return roleOf(r, pid) === 'morphling' ? 'village' : teamOf(r, pid); }
 
 export function wakesWithWolves(r, pid) {
@@ -145,7 +159,7 @@ export function dealGame(r) {
   ids.forEach((p, i) => { g.roles[p] = deck[i]; g.origRoles[p] = deck[i]; g.alive[p] = true; });
   r.g = g;
   if (s.trueLovers) g.lovers = shuffle(ids).slice(0, 2);
-  ids.forEach(p => { if (g.roles[p] === 'executioner') assignExecTarget(r, p); });
+  ids.forEach(p => onRoleGained(r, p, g.roles[p]));
   g.steps = buildSteps(r);
   r.status = 'playing';
 }
@@ -321,8 +335,8 @@ export function stepForm(r, id, pid) {
       P('rec', 'Recruit a Sidekick (optional)', others(r, pid), { min: 0 });
       break;
     case 'assassin':
-      P('gp', "Guess a player's role (optional). If you're wrong, you die.", others(r, pid), { min: 0 });
-      fields.push({ key: 'gr', type: 'role', label: 'Their role is…', min: 1, options: roleOptions(r), showIf: v => !!v.gp });
+      P('gp', "Guess a player's role (optional). If you're wrong, you die.", guessTargets(r, pid), { min: 0 });
+      fields.push({ key: 'gr', type: 'role', label: 'Their role is… (werewolf roles not allowed)', min: 1, options: roleOptions(r, 'wolves'), showIf: v => !!v.gp });
       break;
     case 'juggernaut': {
       const n = juggernautKillsPerNight(r, pid);
@@ -349,8 +363,8 @@ export function stepForm(r, id, pid) {
       P('t', 'Try to kill someone (optional)', others(r, pid), { min: 0 });
       break;
     case 'niceGuesser':
-      P('gp', "Guess a player's role (optional)", others(r, pid), { min: 0 });
-      fields.push({ key: 'gr', type: 'role', label: 'Their role is…', min: 1, options: roleOptions(r), showIf: v => !!v.gp });
+      P('gp', "Guess a player's role (optional). If you're wrong, you die.", guessTargets(r, pid), { min: 0 });
+      fields.push({ key: 'gr', type: 'role', label: 'Their role is… (Villager-team roles not allowed)', min: 1, options: roleOptions(r, 'village'), showIf: v => !!v.gp });
       break;
     case 'seer':
       P('t', 'See whose role?', others(r, pid));
@@ -362,7 +376,7 @@ export function stepForm(r, id, pid) {
       P('t', 'Investigate who?', others(r, pid));
       break;
     case 'swapper':
-      P('ts', 'Choose two players to swap (or skip)', alivePlayers(r), { count: 2, min: 0 });
+      P('ts', "Choose two players to swap, or don't swap anyone tonight. Nobody will know either way until the votes are in.", alivePlayers(r), { count: 2, min: 0 });
       break;
     case 'mortician': {
       const dead = playerIds(r).filter(p => !isAlive(r, p));
@@ -393,10 +407,17 @@ export function stepForm(r, id, pid) {
   return { info, fields };
 }
 
-function roleOptions(r) {
-  // Every role that could be in play: the deck plus roles created during the game.
+// Roles a guesser may name: every role that could be in play (the deck plus
+// roles created during the game), minus one team. The Assassin can't guess
+// werewolf-team roles; the Nice Guesser can't guess Villager-team roles.
+function roleOptions(r, bannedTeam) {
   const set = uniq([...arr(r.g.deck), ...(arr(r.g.deck).includes('cultist') ? ['follower'] : []), ...(arr(r.g.deck).includes('jackal') ? ['sidekick'] : [])]);
-  return set.map(ro => ({ value: ro, label: roleName(ro) }));
+  return set.filter(ro => ROLES[ro].team !== bannedTeam).map(ro => ({ value: ro, label: roleName(ro) }));
+}
+// Players a guesser may guess on: not themselves, and not anyone whose role
+// is already public (e.g. revealed by the Oracle).
+function guessTargets(r, pid) {
+  return others(r, pid).filter(p => !obj(r.g.publicRoles)[p]);
 }
 
 // Private result a player sees right after submitting (Seer, Wizard, etc.).
@@ -454,7 +475,7 @@ export function applyStepEnd(r, id) {
         center[i] = 'thief';
         g.center = center;
         g.roles[pid] = newRole;
-        if (newRole === 'executioner') assignExecTarget(r, pid);
+        onRoleGained(r, pid, newRole);
         note(r, pid, `You are now the ${roleName(newRole)}.`);
         break;
       }
@@ -573,7 +594,7 @@ export function finishMorning(r) {
       const newRole = roleOf(r, t);
       g.roles[pid] = newRole;
       if (g.fromExec) delete g.fromExec[pid];
-      if (newRole === 'executioner') assignExecTarget(r, pid);
+      onRoleGained(r, pid, newRole);
       note(r, pid, `You predicted correctly! You are now the ${roleName(newRole)}.`);
     }
   });
@@ -671,7 +692,12 @@ export function resolveVote(r) {
       tally[v.t] = (tally[v.t] || 0) + voteWeight(r, p);
     });
     const sw = arr(g.swap);
-    if (sw.length === 2) { const a = tally[sw[0]] || 0; tally[sw[0]] = tally[sw[1]] || 0; tally[sw[1]] = a; }
+    // The swap stays secret until now, so it can catch the town by surprise.
+    // It only happens if both swapped players are still alive.
+    if (sw.length === 2 && sw.every(p => isAlive(r, p))) {
+      const a = tally[sw[0]] || 0; tally[sw[0]] = tally[sw[1]] || 0; tally[sw[1]] = a;
+      lines.push(`Surprise! The Swapper swapped ${pname(r, sw[0])} and ${pname(r, sw[1])}. Their votes have been switched.`);
+    }
     const max = Math.max(0, ...Object.values(tally));
     const top = Object.keys(tally).filter(t => tally[t] === max);
     // Totals are public (after any Swapper swap), so sharp players can spot the Mayor's extra votes.
