@@ -76,3 +76,7 @@ button.mini.danger { color: #ff7b6e; }
 .btn-row { display: flex; gap: 8px; }
 .btn-row button { flex: 1; }
 details summary { cursor: pointer; color: var(--dim); margin-top: 12px; }
+.count-box { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 0.95rem; }
+.count-box.ok { background: #1d3a27; color: #bfe8cc; }
+.count-box.bad { background: #3a1d1a; color: #ffc2b8; }
+.count-msg { font-weight: 700; white-space: nowrap; }
