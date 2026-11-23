@@ -2,7 +2,7 @@
 // stored in Firebase) and reads or mutates it in place, so it can run inside
 // a database transaction. No UI and no network code lives here.
 
-import { ROLES, WOLF_WAKERS, KILLER_TEAMS, NEUTRAL_KILLER_TEAMS, roleName, teamName } from './roles.js';
+import { ROLES, WOLF_WAKERS, KILLER_TEAMS, NEUTRAL_KILLER_TEAMS, roleName, teamName } from './roles.js?v=6';
 
 /* ---------------- helpers ---------------- */
 

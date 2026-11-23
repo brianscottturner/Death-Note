@@ -1,8 +1,8 @@
-import { net } from './net.js';
-import { ROLES, TEAMS, ROLE_GROUPS, roleName, teamName } from './roles.js';
-import * as E from './engine.js';
+import { net } from './net.js?v=6';
+import { ROLES, TEAMS, ROLE_GROUPS, roleName, teamName } from './roles.js?v=6';
+import * as E from './engine.js?v=6';
 
-const APP_VERSION = 1;
+const APP_VERSION = 6; // bump this AND every ?v= in index.html, app.js and engine.js on each change
 const EDITION = 'werewolves';
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const MAX_PLAYERS = 30;
@@ -196,8 +196,14 @@ function renderLobby() {
     </div>`;
 
   // Role setup
-  html += `<div class="card"><h2>Roles <span class="count ${deck.length === need ? 'ok' : 'bad'}">${deck.length} / ${need}</span></h2>
-    ${deck.includes('thief') ? '<p class="hint">With a Thief, you need 2 extra roles: the two unused cards the Thief chooses from.</p>' : ''}`;
+  const diff = deck.length - need;
+  const countMsg = diff === 0 ? '✓ Ready' : diff > 0 ? `Remove ${diff}` : `Add ${-diff} more`;
+  html += `<div class="card"><h2>Roles</h2>
+    <div class="count-box ${diff === 0 ? 'ok' : 'bad'}">
+      <div><b>${deck.length}</b> card${deck.length === 1 ? '' : 's'} chosen · <b>${need}</b> needed</div>
+      <div class="count-msg">${countMsg}</div>
+    </div>
+    <p class="hint">You need one card per player${deck.includes('thief') ? ', plus 2 extra for the Thief to choose from' : ''} (${ids.length} player${ids.length === 1 ? '' : 's'}${deck.includes('thief') ? ' + 2' : ''} = ${need}).</p>`;
   ROLE_GROUPS.forEach(gr => {
     html += `<h3>${gr.label}</h3>`;
     gr.roles.forEach(id => {
