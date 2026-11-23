@@ -376,7 +376,7 @@ export function stepForm(r, id, pid) {
       P('t', 'Investigate who?', others(r, pid));
       break;
     case 'swapper':
-      P('ts', 'Choose two players to swap (or skip)', alivePlayers(r), { count: 2, min: 0 });
+      P('ts', "Choose two players to swap, or don't swap anyone tonight. Nobody will know either way until the votes are in.", alivePlayers(r), { count: 2, min: 0 });
       break;
     case 'mortician': {
       const dead = playerIds(r).filter(p => !isAlive(r, p));

@@ -428,7 +428,11 @@ function renderNight(me) {
     return html + `</div>`;
   }
   const ok = formValid(form.fields, draft.values);
-  html += `<button class="primary" data-act="submitStep" ${ok ? '' : 'disabled'}>${form.fields.length ? 'Confirm' : 'OK'}</button></div>`;
+  // When nothing is picked on an optional action, say plainly that they're passing.
+  const vis = visibleFields(form.fields, draft.values);
+  const nothingPicked = vis.length && vis.every(f => f.min === 0 && !arr(draft.values[f.key]).length && !draft.values[f.key]);
+  const label = !form.fields.length ? 'OK' : nothingPicked ? (id === 'swapper' ? "Don't swap anyone tonight" : 'Do nothing tonight') : 'Confirm';
+  html += `<button class="primary" data-act="submitStep" ${ok ? '' : 'disabled'}>${label}</button></div>`;
   return html;
 }
 
