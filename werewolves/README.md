@@ -75,11 +75,11 @@ them in `engine.js` if you play differently.
   Once they agree, they get 3 seconds to change their minds. If they haven't
   agreed after 45 seconds, the player with the most votes dies (ties broken
   randomly). A hacked werewolf doesn't vote.
-- **Jackal and Sidekick kill**: both vote and confirm. Most votes wins, and ties
-  are broken randomly. If the Jackal dies, the Sidekick keeps killing alone but
-  can't recruit.
-- **Any target**: killers may target their own teammates (a big-brain play),
-  but not themselves.
+- **Jackal and Sidekick kill** works the same way: they must agree, with the
+  same 45-second limit. If the Jackal dies, the Sidekick keeps killing alone
+  but can't recruit.
+- **Any target**: in the werewolf and Jackal votes, players may vote for a
+  teammate, or even themselves (a big-brain play).
 - **Medic** can't shield themselves.
 - **Medic shield** is placed on the first night. If someone becomes the Medic
   later (an Amnesiac copying a dead Medic), they wake the next night to place

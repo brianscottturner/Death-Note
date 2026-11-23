@@ -176,7 +176,7 @@ export const STEPS = {
   jackalRecruit: { roles: ['jackal'], wake: 'Jackal, wake up. You may choose someone to recruit as your Sidekick.', sleep: 'Jackal, go back to sleep.' },
   werewolves: { roles: WOLF_WAKERS, wake: 'Werewolves, wake up. Look at each other, and agree on your victim on your phones.', sleep: 'Werewolves, go back to sleep.' },
   assassin:   { roles: ['assassin'], wake: "Assassin, wake up. You may guess someone's role. If you're wrong, you die.", sleep: 'Assassin, go back to sleep.' },
-  jackal:     { roles: ['jackal'], wake: 'Jackal and Sidekick, wake up. Choose your victim together.', sleep: 'Jackal and Sidekick, go back to sleep.' },
+  jackal:     { roles: ['jackal'], wake: 'Jackal and Sidekick, wake up. Agree on your victim on your phones.', sleep: 'Jackal and Sidekick, go back to sleep.' },
   juggernaut: { roles: ['juggernaut'], wake: 'Juggernaut, wake up. Choose who to kill.', sleep: 'Juggernaut, go back to sleep.' },
   arsonist:   { roles: ['arsonist'], wake: "Arsonist, wake up. Douse a player, or ignite everyone you've doused.", sleep: 'Arsonist, go back to sleep.' },
   vigilante:  { roles: ['vigilante'], wake: 'Vigilante, wake up. You may use your one shot tonight.', sleep: 'Vigilante, go back to sleep.' },
@@ -236,20 +236,23 @@ export function stepActors(r, id) {
   if (id === 'jackalRecruit') return ids.filter(p => roleOf(r, p) === 'jackal');
   return ids.filter(p => STEPS[id].roles.includes(roleOf(r, p)));
 }
-// Werewolves who vote on the pack's kill tonight (a Sidekick who used to be
-// a werewolf wakes with them but doesn't vote).
-export function wolfVoters(r) {
-  return stepActors(r, 'werewolves').filter(p => teamOf(r, p) === 'wolves');
+// Group kills (werewolves, Jackal + Sidekick) are decided by agreement.
+export const GROUP_KILL_STEPS = ['werewolves', 'jackal'];
+// Who votes on a group kill tonight. A Sidekick who used to be a werewolf
+// wakes with the werewolves but doesn't vote with them.
+export function groupVoters(r, id) {
+  if (id === 'werewolves') return stepActors(r, id).filter(p => teamOf(r, p) === 'wolves');
+  return stepActors(r, id);
 }
-// The victim if every voting werewolf has picked the same player, else null.
-export function wolfConsensus(r) {
-  const voters = wolfVoters(r);
-  const acts = actionsFor(r, 'werewolves');
+// The victim if every voter has picked the same player, else null.
+export function groupConsensus(r, id) {
+  const voters = groupVoters(r, id);
+  const acts = actionsFor(r, id);
   const picks = voters.map(p => (acts[p] || {}).t || null);
   return voters.length && picks[0] && picks.every(t => t === picks[0]) ? picks[0] : null;
 }
 export function stepDone(r, id) {
-  if (id === 'werewolves') return !!wolfConsensus(r);
+  if (GROUP_KILL_STEPS.includes(id)) return !!groupConsensus(r, id);
   const acts = actionsFor(r, id);
   return stepActors(r, id).every(p => acts[p] && acts[p].done);
 }
@@ -299,7 +302,7 @@ export function stepForm(r, id, pid) {
       const pack = stepActors(r, id).filter(p => p !== pid);
       info.push(pack.length ? `Awake with you: ${pack.map(p => `<b>${pname(r, p)}</b> (${roleName(roleOf(r, p))})`).join(', ')}` : "You're the only one awake.");
       if (teamOf(r, pid) === 'wolves') {
-        P('t', 'Choose the victim. Keep changing your vote until the whole pack agrees.', others(r, pid), { live: true });
+        P('t', 'Choose the victim. Keep changing your vote until the whole pack agrees.', alivePlayers(r), { live: true });
       } else {
         info.push("You're the Jackal's Sidekick now, not a werewolf. You can't vote with the pack, so just blend in.");
       }
@@ -308,7 +311,7 @@ export function stepForm(r, id, pid) {
     case 'jackal': {
       const partner = stepActors(r, id).filter(p => p !== pid);
       if (partner.length) info.push(`Awake with you: ${partner.map(p => `<b>${pname(r, p)}</b> (${roleName(roleOf(r, p))})`).join(', ')}`);
-      P('t', 'Vote for the victim', others(r, pid), { live: true });
+      P('t', 'Choose the victim. Keep changing your vote until you both agree.', alivePlayers(r), { live: true });
       break;
     }
     case 'cultist':
