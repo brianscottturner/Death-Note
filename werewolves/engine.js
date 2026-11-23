@@ -215,9 +215,12 @@ export function stepDone(r, id) {
 
 // Kills that would happen if the night ended now, minus shielded players.
 // The Witch sees this list.
+// Only victims of werewolves and neutral killers count. The Witch never
+// sees (or saves) kills by Villager-team killers, or a guesser dying from a wrong guess.
 export function pendingVictims(r) {
-  return uniq(arr(r.g.kills).filter(k => isAlive(r, k.t) && !blocked(r, k)).map(k => k.t));
+  return uniq(arr(r.g.kills).filter(k => isAlive(r, k.t) && !blocked(r, k) && witchCanSee(k)).map(k => k.t));
 }
+function witchCanSee(k) { return KILLER_TEAMS.includes(k.team) && k.kind !== 'backfire'; }
 function blocked(r, k) { return k.kind !== 'backfire' && shieldActive(r, k.t); }
 
 // The form a player fills in during a step. Each field:
@@ -374,7 +377,8 @@ export function stepResult(r, id, pid) {
 function addKill(r, t, by, kind) {
   if (!t) return;
   const k = arr(r.g.kills);
-  k.push({ t, by: arr(by), kind });
+  // Remember the killer's team at the time, for the Witch.
+  k.push({ t, by: arr(by), kind, team: arr(by).length ? teamOf(r, arr(by)[0]) : null });
   r.g.kills = k;
 }
 function plurality(votes) {
@@ -484,7 +488,7 @@ export function resolveNight(r) {
   const dead = [];
   arr(g.kills).forEach(k => {
     if (!isAlive(r, k.t) || blocked(r, k)) return;
-    if (g.witchSave === k.t && k.kind !== 'witch') return;
+    if (g.witchSave === k.t && witchCanSee(k)) return;
     if (!dead.includes(k.t)) dead.push(k.t);
     g.hasKilled = obj(g.hasKilled);
     arr(k.by).forEach(b => { if (b !== k.t) g.hasKilled[b] = true; });

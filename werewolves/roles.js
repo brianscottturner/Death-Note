@@ -33,7 +33,7 @@ export const ROLES = {
   seer:        { name: 'Seer', team: 'village',
     desc: "Each night, you see one player's role." },
   witch:       { name: 'Witch', team: 'village',
-    desc: 'You have one save potion and one kill potion for the whole game, used at night. You see who is about to die before you choose.' },
+    desc: 'You have one save potion and one kill potion for the whole game, used at night. You see who the werewolves and neutral killers are about to kill before you choose.' },
   cupid:       { name: 'Cupid', team: 'village',
     desc: 'On the first night, you secretly choose two Lovers. If one Lover dies, the other dies of a broken heart. If both Lovers are alive in the final 3, they win together.' },
   wizard:      { name: 'Wizard', team: 'village',

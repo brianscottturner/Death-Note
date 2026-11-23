@@ -69,9 +69,11 @@ them in `engine.js` if you play differently.
   later (an Amnesiac copying a dead Medic), they wake the next night to place
   their own shield. The shield blocks every kill (night kills and the Hunter's shot),
   but not being voted out. It ends when the Medic dies or loses the role.
-- **Witch** sees who is about to die, and can save one of them. Her own kill
-  potion can't be saved. Because she wakes before the Nice Guesser and
-  Vigilante, she can't save their victims (she doesn't know about them yet).
+- **Witch** sees who is about to be killed by the werewolves or a neutral
+  killer, and can save one of them. She never sees or saves victims of
+  Villager-team killers (Sheriff, Vigilante, Nice Guesser), her own kill potion,
+  or a guesser who dies from a wrong guess. If a saved player was also
+  targeted by a Villager-team killer, they still die.
 - **Sheriff**: "villager" means anyone on the Villager team.
 - **Assassin / Nice Guesser**: one guess per night. A wrong guess kills the
   guesser.
