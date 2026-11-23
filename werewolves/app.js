@@ -358,6 +358,7 @@ function renderRoleDetails(me) {
   }
   if (role === 'juggernaut') facts.push(`⚔️ Kills: ${obj(g.jugKills)[me] || 0} (you can kill ${E.juggernautKillsPerNight(r, me)} per night)`);
   if (role === 'mayor') facts.push('🗳 Your vote secretly counts as 3.');
+  if (role === 'morphling') facts.push(`🎭 If the Seer looks at you, they'll see: <b>${esc(roleName(E.morphlingDisguise(r, me)))}</b>`);
   if (team === 'wolves' || E.wakesWithWolves(r, me)) {
     const pack = E.playerIds(r).filter(p => p !== me && E.wakesWithWolves(r, p));
     if (pack.length) facts.push(`🐺 Awake with you at night: ${pack.map(p => `${esc(pname(p))} (${roleName(E.roleOf(r, p))})${E.isAlive(r, p) ? '' : ' 💀'}`).join(', ')}`);

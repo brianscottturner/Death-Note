@@ -56,7 +56,21 @@ export function actionKey(r, stepId) { return `n${r.g.night}_${stepId}`; }
 export function actionsFor(r, stepId) { return obj(obj(r.g.actions)[actionKey(r, stepId)]); }
 
 // What the Seer / Wizard / Detective see. The Morphling looks like a Villager.
-function apparentRole(r, pid) { return roleOf(r, pid) === 'morphling' ? 'villager' : roleOf(r, pid); }
+function apparentRole(r, pid) { return roleOf(r, pid) === 'morphling' ? morphlingDisguise(r, pid) : roleOf(r, pid); }
+// The Villager-team role the Seer sees a Morphling as. Fixed for the whole game.
+export function morphlingDisguise(r, pid) { return obj(r.g.disguise)[pid] || 'villager'; }
+// Picks a random Villager-team role from this game's cards (never the Seer
+// itself, since the Seer would know that's fake).
+function assignDisguise(r, pid) {
+  const pool = arr(r.g.deck).filter(ro => ROLES[ro] && ROLES[ro].team === 'village' && ro !== 'seer');
+  r.g.disguise = obj(r.g.disguise);
+  r.g.disguise[pid] = pool.length ? pick(pool) : 'villager';
+}
+// Setup a role needs when a player gets it (at the deal, or later as Thief/Amnesiac).
+function onRoleGained(r, pid, role) {
+  if (role === 'executioner') assignExecTarget(r, pid);
+  if (role === 'morphling' && !obj(r.g.disguise)[pid]) assignDisguise(r, pid);
+}
 function apparentTeam(r, pid) { return roleOf(r, pid) === 'morphling' ? 'village' : teamOf(r, pid); }
 
 export function wakesWithWolves(r, pid) {
@@ -145,7 +159,7 @@ export function dealGame(r) {
   ids.forEach((p, i) => { g.roles[p] = deck[i]; g.origRoles[p] = deck[i]; g.alive[p] = true; });
   r.g = g;
   if (s.trueLovers) g.lovers = shuffle(ids).slice(0, 2);
-  ids.forEach(p => { if (g.roles[p] === 'executioner') assignExecTarget(r, p); });
+  ids.forEach(p => onRoleGained(r, p, g.roles[p]));
   g.steps = buildSteps(r);
   r.status = 'playing';
 }
@@ -454,7 +468,7 @@ export function applyStepEnd(r, id) {
         center[i] = 'thief';
         g.center = center;
         g.roles[pid] = newRole;
-        if (newRole === 'executioner') assignExecTarget(r, pid);
+        onRoleGained(r, pid, newRole);
         note(r, pid, `You are now the ${roleName(newRole)}.`);
         break;
       }
@@ -573,7 +587,7 @@ export function finishMorning(r) {
       const newRole = roleOf(r, t);
       g.roles[pid] = newRole;
       if (g.fromExec) delete g.fromExec[pid];
-      if (newRole === 'executioner') assignExecTarget(r, pid);
+      onRoleGained(r, pid, newRole);
       note(r, pid, `You predicted correctly! You are now the ${roleName(newRole)}.`);
     }
   });

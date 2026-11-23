@@ -96,6 +96,12 @@ them in `engine.js` if you play differently.
 - **Cultist / Jackal recruits** take effect immediately. The recruited player
   loses their old power right away, even if that role hasn't woken up yet that
   night.
+- **Morphling**: at the start of the game, the app picks a random Villager-team
+  role from this game's cards (never the Seer) as the Morphling's disguise. The
+  Seer sees that role every time, and the Morphling's phone shows it so they
+  can claim it. If nobody else is on the Villager team, it's a plain Villager.
+  The Wizard sees the Morphling on the Villager team, and the Detective sees
+  them as innocent.
 - **Detective** sees whether a player has ever successfully killed someone.
 - **Swapper** swaps the votes *received* by the two chosen players.
 - **Votes**: most votes wins. A tie is broken randomly by the app. "Skip" is

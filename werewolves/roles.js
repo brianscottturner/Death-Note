@@ -68,7 +68,7 @@ export const ROLES = {
   assassin:    { name: 'Assassin', team: 'wolves',
     desc: "Wakes up with the werewolves. Each night you may also guess a player's role. If you're right, they die. If you're wrong, you die." },
   morphling:   { name: 'Morphling', team: 'wolves',
-    desc: 'Wakes up with the werewolves. The Seer, Wizard and Detective see you as an innocent Villager.' },
+    desc: "Wakes up with the werewolves. The Seer sees you as a Villager-team role (shown on your phone), the Wizard sees you on the Villager team, and the Detective sees you as innocent." },
   cultist:     { name: 'Cultist', team: 'wolves',
     desc: "Wakes up with the werewolves. On the first night, recruit one player to become your Follower. Recruiting a neutral killer does nothing." },
   follower:    { name: 'Follower', team: 'wolves', selectable: false,
