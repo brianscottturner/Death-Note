@@ -419,6 +419,13 @@ function renderNight(me) {
     const voters = E.stepActors(r, id).filter(p => p !== me && acts[p] && acts[p].t);
     if (voters.length) html += `<p class="hint">Votes so far: ${voters.map(p => `${esc(pname(p))} → <b>${esc(pname(acts[p].t))}</b>${acts[p].done ? ' ✔' : ''}`).join(', ')}</p>`;
   }
+  // Group kills are voted live until everyone agrees (or time runs out): no Confirm button.
+  if (E.GROUP_KILL_STEPS.includes(id)) {
+    const agreed = E.groupConsensus(r, id);
+    if (agreed) html += `<p class="result">${id === 'werewolves' ? '🐺 The pack agrees' : '🦊 You agree'} on <b>${esc(pname(agreed))}</b>. You can still change your vote for a few seconds.</p>`;
+    else if (g.stepDeadline) html += `<p class="hint">Time left to agree: <b data-until="${g.stepDeadline}"></b>. If you don't agree in time, the player with the most votes dies.</p>`;
+    return html + `</div>`;
+  }
   const ok = formValid(form.fields, draft.values);
   html += `<button class="primary" data-act="submitStep" ${ok ? '' : 'disabled'}>${form.fields.length ? 'Confirm' : 'OK'}</button></div>`;
   return html;
@@ -559,7 +566,9 @@ function renderVote(me) {
   alive.filter(p => p !== me).forEach(p => {
     html += `<button class="choice ${voteDraft.t === p ? 'selected' : ''}" data-act="votePick" data-val="${p}">${esc(pname(p))}</button>`;
   });
-  html += `<button class="choice ${voteDraft.t === 'skip' ? 'selected' : ''}" data-act="votePick" data-val="skip">Skip (nobody)</button></div>`;
+  // Skipping is only allowed on the first day.
+  if (g.night === 1) html += `<button class="choice ${voteDraft.t === 'skip' ? 'selected' : ''}" data-act="votePick" data-val="skip">Skip (nobody)</button>`;
+  html += `</div>${g.night === 1 ? '' : '<p class="hint">After the first day, you must vote for someone.</p>'}`;
   if (isDict) {
     html += `<label class="toggle"><input type="checkbox" data-act="dictPower" ${voteDraft.power ? 'checked' : ''}>
       <span><b>Use my Dictator power</b><br><span class="hint">Announce it out loud! Your pick is lynched immediately, and you die too. Without this, your vote doesn't count.</span></span></label>`;
@@ -746,10 +755,32 @@ function afterDeaths(r, next) {
   goTo(r, next);
 }
 function goTo(r, next) {
-  if (next === 'night') E.startNight(r);
-  else { r.g.phase = 'discussion'; r.g.discussEnds = null; }
+  if (next === 'night') {
+    E.startNight(r);
+    // Two rival killers left at nightfall: the stronger one wins at once.
+    if (r.g.winner) { r.status = 'over'; r.g.phase = 'over'; }
+  } else { r.g.phase = 'discussion'; r.g.discussEnds = null; }
 }
 function addAnnounce(r, lines) { r.g.announce = [...arr(r.g.announce), ...lines]; }
+
+// A group (werewolves, or Jackal + Sidekick) keeps voting until everyone
+// agrees, then gets a few seconds to change their minds. After 45 seconds,
+// the player with the most votes dies.
+const GROUP_VOTE_MS = 45000;
+async function runGroupVote(idx, id) {
+  const deadline = Date.now() + GROUP_VOTE_MS;
+  await tx(r => { if (r.g.stepIdx === idx) r.g.stepDeadline = deadline; });
+  while (room.g.stepIdx === idx) {
+    const left = deadline - Date.now();
+    if (left <= 0) break;
+    const why = await waitFor(r => r.g.stepIdx !== idx || !!E.groupConsensus(r, id), left);
+    if (why !== 'ok') break; // time ran out, or skipped
+    const agreed = E.groupConsensus(room, id);
+    if (await pause(Math.min(3000, Math.max(0, deadline - Date.now()))) === 'skip') break;
+    if (E.groupConsensus(room, id) && E.groupConsensus(room, id) === agreed) break;
+  }
+  await tx(r => { r.g.stepDeadline = null; });
+}
 
 async function tick() {
   const g = room.g;
@@ -770,7 +801,9 @@ async function tick() {
       const id = steps[idx];
       if (!g.stepOpen) await tx(r => { if (r.g.stepIdx === idx) r.g.stepOpen = true; });
       await say(E.wakeLine(room, id));
-      if (E.stepActors(room, id).length) await waitFor(r => r.g.stepIdx !== idx || E.stepDone(r, id));
+      const group = E.GROUP_KILL_STEPS.includes(id);
+      if (group && E.groupVoters(room, id).length) await runGroupVote(idx, id);
+      else if (!group && E.stepActors(room, id).length) await waitFor(r => r.g.stepIdx !== idx || E.stepDone(r, id));
       else await pause(fakeMs());
       await gate();
       await tx(r => { if (r.g.stepIdx === idx) r.g.stepOpen = false; });
