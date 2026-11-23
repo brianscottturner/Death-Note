@@ -102,9 +102,37 @@ export function validateSetup(r) {
   return null;
 }
 
+/* ---- Physical cards: each player enters the card they were dealt ---- */
+
+// Why `pid` can't claim `role` right now (or null if they can).
+export function pickProblem(r, pid, role) {
+  const deck = deckFromSettings(r.settings);
+  const inDeckCount = deck.filter(x => x === role).length;
+  if (!inDeckCount) return "That card isn't in this game.";
+  const taken = Object.entries(obj(r.picks)).filter(([p, ro]) => p !== pid && ro === role).length;
+  if (taken >= inDeckCount) return `Someone else already entered ${roleName(role)}. Double-check your card, or ask the host to check the role list.`;
+  return null;
+}
+export function allPicked(r) {
+  const picks = obj(r.picks);
+  return playerIds(r).every(p => picks[p]);
+}
+// Cards left over after everyone's entry (the Thief's two unused cards).
+function leftoverCards(deck, used) {
+  const rest = deck.slice();
+  used.forEach(x => { const i = rest.indexOf(x); if (i >= 0) rest.splice(i, 1); });
+  return rest;
+}
+
+// Starts the game. Uses the cards players entered (r.picks) when everyone
+// has entered one; otherwise deals randomly (used by the tests).
 export function dealGame(r) {
   const ids = playerIds(r);
-  const deck = shuffle(deckFromSettings(r.settings));
+  let deck = shuffle(deckFromSettings(r.settings));
+  if (allPicked(r)) {
+    const picked = ids.map(p => r.picks[p]);
+    deck = [...picked, ...shuffle(leftoverCards(deck, picked))];
+  }
   const s = obj(r.settings);
   const g = {
     night: 1, phase: 'night', stepIdx: -1, stepOpen: false,

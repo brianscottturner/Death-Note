@@ -1,3 +1,4 @@
+// Every role has one card, except Villager and Werewolf (`multi`), which have several.
 // Role and team definitions for the custom Werewolves role set.
 // `team` is the team a role plays for. `selectable: false` roles can't be put
 // in the deck directly; they're only created by another role's power
