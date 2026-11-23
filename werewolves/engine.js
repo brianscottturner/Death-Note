@@ -139,7 +139,7 @@ export const STEPS = {
   thief:      { first: true, roles: ['thief'], wake: 'Thief, wake up. Look at your phone and choose one of the two unused roles.', sleep: 'Thief, go back to sleep.' },
   cupid:      { first: true, roles: ['cupid'], wake: 'Cupid, wake up. Choose the two players who will fall in love.', sleep: 'Cupid, go back to sleep.' },
   lovers:     { first: true, roles: [], wake: 'Lovers, wake up. Look at your phone to see who you are in love with.', sleep: 'Lovers, go back to sleep.' },
-  medic:      { first: true, roles: ['medic'], wake: 'Medic, wake up. Choose a player to protect with your shield.', sleep: 'Medic, go back to sleep.' },
+  medic:      { roles: ['medic'], wake: 'Medic, wake up. Choose a player to protect with your shield.', sleep: 'Medic, go back to sleep.' },
   oracle:     { first: true, roles: ['oracle'], wake: 'Oracle, wake up. Choose your target. If you die, their role will be revealed.', sleep: 'Oracle, go back to sleep.' },
   glitch:     { roles: ['glitch'], wake: 'Glitch, wake up. You may choose someone to kill, and someone to hack.', sleep: 'Glitch, go back to sleep.' },
   werewolves: { roles: WOLF_WAKERS, wake: 'Werewolves, wake up. Look at each other, and choose your victim on your phones.', sleep: 'Werewolves, go back to sleep.' },
@@ -184,8 +184,16 @@ export function buildSteps(r) {
     if (st.first && n > 1) return false;
     if (id === 'lovers') return !!r.g.lovers || inDeck(r, ['cupid']);
     if (id === 'mortician' && n === 1) return false;
+    // The Medic wakes on the first night, and again on any later night when
+    // someone has newly become the Medic (e.g. an Amnesiac copying a dead Medic).
+    if (id === 'medic') return n === 1 ? inDeck(r, ['medic']) : medicsNeedingShield(r).length > 0;
     return inDeck(r, st.roles);
   });
+}
+
+// Living Medics who haven't placed their shield yet.
+function medicsNeedingShield(r) {
+  return alivePlayers(r).filter(p => roleOf(r, p) === 'medic' && !(r.g.shield && r.g.shield.by === p));
 }
 
 // Players who are actually awake and acting during a step.
@@ -194,6 +202,7 @@ export function stepActors(r, id) {
   const ok = (p) => isAlive(r, p) && g.hacked !== p;
   const ids = playerIds(r).filter(ok);
   if (id === 'lovers') return lovers(r).filter(ok);
+  if (id === 'medic') return medicsNeedingShield(r).filter(ok);
   if (id === 'werewolves') return ids.filter(p => wakesWithWolves(r, p));
   if (id === 'jackal') return ids.filter(p => roleOf(r, p) === 'jackal' || roleOf(r, p) === 'sidekick');
   return ids.filter(p => STEPS[id].roles.includes(roleOf(r, p)));

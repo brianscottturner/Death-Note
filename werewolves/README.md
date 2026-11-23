@@ -50,7 +50,9 @@ them in `engine.js` if you play differently.
 
 - **Werewolf / Jackal kills**: each member votes on their phone, and teammates
   see each other's votes live. Most votes wins. Ties are broken randomly.
-- **Medic shield** blocks every kill (night kills and the Hunter's shot),
+- **Medic shield** is placed on the first night. If someone becomes the Medic
+  later (an Amnesiac copying a dead Medic), they wake the next night to place
+  their own shield. The shield blocks every kill (night kills and the Hunter's shot),
   but not being voted out. It ends when the Medic dies or loses the role.
 - **Witch** sees who is about to die, and can save one of them. Her own kill
   potion can't be saved.
