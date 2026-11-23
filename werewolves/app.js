@@ -121,7 +121,7 @@ async function createGame() {
       return {
         code: c, edition: EDITION, createdAt: Date.now(), hostUid: myUid, speakerUid: null,
         status: 'lobby',
-        settings: { roles: { werewolf: 1, seer: 1, villager: 3 }, trueLovers: false, revealRoles: true, discussSec: 180 },
+        settings: { roles: { werewolf: 2, seer: 1, villager: 2 }, trueLovers: false, revealRoles: true, discussSec: 180 },
         players: { p1: { uid: myUid, name } },
       };
     });
