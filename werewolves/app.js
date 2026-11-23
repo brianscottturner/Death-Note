@@ -121,7 +121,7 @@ async function createGame() {
       return {
         code: c, edition: EDITION, createdAt: Date.now(), hostUid: myUid, speakerUid: null,
         status: 'lobby',
-        settings: { roles: { werewolf: 2, seer: 1, villager: 2 }, trueLovers: false, revealRoles: true, guessPenalty: false, discussSec: 180 },
+        settings: { roles: { werewolf: 2, seer: 1, villager: 2 }, trueLovers: false, revealRoles: true, discussSec: 180 },
         players: { p1: { uid: myUid, name } },
       };
     });
@@ -227,7 +227,6 @@ function renderLobby() {
   html += `<div class="card"><h2>Options</h2>
     ${opt('trueLovers', 'True Lovers mode', "Two random players start as Lovers. Can't be used with Cupid.")}
     ${opt('revealRoles', 'Reveal roles when players die', mort ? 'Turned off automatically because the Mortician is in the game.' : 'Everyone hears the role of each player who dies.', mort)}
-    ${opt('guessPenalty', 'Wrong guesses kill the guesser', 'For the Assassin and the Nice Guesser. If off, a wrong guess does nothing.')}
     <div class="row-between"><span><b>Discussion time</b></span>
       <span class="stepper">${host ? `<button class="mini" data-act="discuss" data-d="-30">−</button>` : ''}
       <span>${fmtTime((s.discussSec || 180) * 1000)}</span>

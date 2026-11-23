@@ -55,10 +55,11 @@ them in `engine.js` if you play differently.
 - **Witch** sees who is about to die, and can save one of them. Her own kill
   potion can't be saved.
 - **Sheriff**: "villager" means anyone on the Villager team.
-- **Assassin / Nice Guesser**: one guess per night. A wrong guess does nothing,
-  unless the "Wrong guesses kill the guesser" option is on.
-- **Cultist / Jackal recruits** take effect the next morning, so the recruited
-  player still uses their old power that first night.
+- **Assassin / Nice Guesser**: one guess per night. A wrong guess kills the
+  guesser.
+- **Cultist / Jackal recruits** take effect immediately. The recruited player
+  loses their old power right away, even if that role hasn't woken up yet that
+  night.
 - **Detective** sees whether a player has ever successfully killed someone.
 - **Swapper** swaps the votes *received* by the two chosen players.
 - **Votes**: most votes wins. A tie, or "Skip" winning, means nobody is voted
@@ -66,10 +67,10 @@ them in `engine.js` if you play differently.
   not who voted for whom, so attentive players can try to spot the Mayor's
   extra votes.
 - **Executioner**: if their target dies any way other than a vote, the
-  Executioner becomes a Jester.
+  Executioner becomes an Amnesiac.
 - **Jester / Executioner wins** end the game immediately.
-- **Lovers**: if one dies, the other dies of a broken heart. If the two Lovers
-  are the last two alive, they win together.
+- **Lovers**: if one dies, the other dies of a broken heart. If both Lovers are
+  alive when 3 or fewer players are left, they win together.
 - **Winning**: Villagers win when no killers are left. A killer team
   (Werewolves, Arsonist, Jackal, Juggernaut, Glitch) wins when it's the only
   killer team left and has at least as many living players as everyone else.

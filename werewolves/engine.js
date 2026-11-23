@@ -111,7 +111,6 @@ export function dealGame(r) {
     roles: {}, origRoles: {}, alive: {}, publicRoles: {},
     deck: uniq(deck), center: deck.slice(ids.length),
     revealRoles: s.revealRoles !== false && !deck.includes('mortician'),
-    guessPenalty: !!s.guessPenalty,
     discussSec: s.discussSec || 180,
     used: {}, notes: {}, actions: {}, kills: [], announce: [],
   };
@@ -367,7 +366,7 @@ function plurality(votes) {
 function resolveGuess(r, guesser, a) {
   if (!a || !a.gp || !a.gr) return;
   if (roleOf(r, a.gp) === a.gr) addKill(r, a.gp, [guesser], 'guess');
-  else if (r.g.guessPenalty) addKill(r, guesser, [guesser], 'backfire');
+  else addKill(r, guesser, [guesser], 'backfire'); // a wrong guess always kills the guesser
 }
 
 // Applied when the speaker closes a step.
@@ -403,10 +402,10 @@ export function applyStepEnd(r, id) {
         break;
       case 'werewolves':
         if (role === 'assassin') resolveGuess(r, pid, a);
-        if (role === 'cultist' && a.rec) { const rec = arr(g.recruits); rec.push({ kind: 'cult', by: pid, t: a.rec }); g.recruits = rec; }
+        if (role === 'cultist' && a.rec) recruit(r, 'cult', pid, a.rec);
         break;
       case 'jackal':
-        if (role === 'jackal' && a.rec) { const rec = arr(g.recruits); rec.push({ kind: 'jackal', by: pid, t: a.rec }); g.recruits = rec; }
+        if (role === 'jackal' && a.rec) recruit(r, 'jackal', pid, a.rec);
         break;
       case 'juggernaut': arr(a.ts).forEach(t => addKill(r, t, [pid], 'jug')); break;
       case 'arsonist': {
@@ -436,6 +435,28 @@ export function applyStepEnd(r, id) {
     const voters = actors.filter(p => id === 'jackal' || teamOf(r, p) === 'wolves');
     const t = plurality(voters.map(p => (acts[p] || {}).t));
     if (t) addKill(r, t, voters.filter(p => (acts[p] || {}).t === t), id === 'jackal' ? 'jackal' : 'wolves');
+  }
+}
+
+// Recruits take effect immediately: the recruited player loses their old
+// power right away, even if their role hasn't woken up yet tonight.
+function recruit(r, kind, by, t) {
+  const g = r.g;
+  if (!isAlive(r, t)) return;
+  if (kind === 'cult') {
+    if (NEUTRAL_KILLER_TEAMS.includes(teamOf(r, t)) || teamOf(r, t) === 'wolves') {
+      note(r, by, `Your recruit failed. ${pname(r, t)} could not be recruited.`);
+      return;
+    }
+    g.roles[t] = 'follower';
+    note(r, t, 'The Cultist recruited you! You are now a Follower on the Werewolf team. You lost your old power and wake up with the werewolves.');
+    note(r, by, `${pname(r, t)} is now your Follower.`);
+  } else {
+    const wasWolf = teamOf(r, t) === 'wolves' || wakesWithWolves(r, t);
+    g.roles[t] = 'sidekick';
+    if (wasWolf) { g.exWolf = obj(g.exWolf); g.exWolf[t] = true; }
+    note(r, t, `The Jackal (${pname(r, by)}) recruited you! You are now the Sidekick on the Jackal team. You lost your old abilities.${wasWolf ? " You still wake up with the werewolves, but you're no longer on their team." : ''}`);
+    note(r, by, `${pname(r, t)} is now your Sidekick.`);
   }
 }
 
@@ -492,26 +513,6 @@ export function finishMorning(r) {
   });
   g.amnesiacGuess = null;
 
-  // Recruits take effect in the morning, so the recruited player keeps their power for that first night.
-  arr(g.recruits).forEach(rec => {
-    if (!isAlive(r, rec.by) || !isAlive(r, rec.t)) return;
-    if (rec.kind === 'cult') {
-      if (NEUTRAL_KILLER_TEAMS.includes(teamOf(r, rec.t)) || teamOf(r, rec.t) === 'wolves') {
-        note(r, rec.by, `Your recruit failed. ${pname(r, rec.t)} could not be recruited.`);
-        return;
-      }
-      g.roles[rec.t] = 'follower';
-      note(r, rec.t, 'The Cultist recruited you! You are now a Follower on the Werewolf team. You lost your old power and wake up with the werewolves.');
-      note(r, rec.by, `${pname(r, rec.t)} is now your Follower.`);
-    } else {
-      const wasWolf = teamOf(r, rec.t) === 'wolves' || wakesWithWolves(r, rec.t);
-      g.roles[rec.t] = 'sidekick';
-      if (wasWolf) { g.exWolf = obj(g.exWolf); g.exWolf[rec.t] = true; }
-      note(r, rec.t, `The Jackal (${pname(r, rec.by)}) recruited you! You are now the Sidekick on the Jackal team. You lost your old abilities.${wasWolf ? " You still wake up with the werewolves, but you're no longer on their team." : ''}`);
-      note(r, rec.by, `${pname(r, rec.t)} is now your Sidekick.`);
-    }
-  });
-  g.recruits = [];
   g.hacked = null;
   g.morning = null;
   maybeCheckWin(r);
@@ -539,12 +540,12 @@ export function killPlayers(r, ids, cause) {
       lines.push(`The Oracle has died. Their target, ${pname(r, t)}, is ${aRole(roleOf(r, t))}.`);
     }
     if (role === 'hunter') { const q = arr(g.hunterQueue); q.push(p); g.hunterQueue = q; }
-    // An Executioner whose target dies any way other than a vote becomes a Jester.
+    // An Executioner whose target dies any way other than a vote becomes an Amnesiac.
     if (c !== 'lynch') {
       Object.entries(obj(g.execTarget)).forEach(([ex, t]) => {
         if (t === p && isAlive(r, ex) && roleOf(r, ex) === 'executioner') {
-          g.roles[ex] = 'jester';
-          note(r, ex, `Your target ${pname(r, p)} died before being voted out. You are now the Jester: get yourself voted out to win!`);
+          g.roles[ex] = 'amnesiac';
+          note(r, ex, `Your target ${pname(r, p)} died before being voted out. You are now the Amnesiac: predict who will die each night to take their role.`);
         }
       });
     }
@@ -648,8 +649,8 @@ export function checkWin(r) {
   const teamMembers = (t) => all.filter(p => teamOf(r, p) === t);
   if (!al.length) { g.winner = { team: 'none', players: [], text: 'Everyone is dead. Nobody wins!' }; return g.winner; }
   const l = lovers(r);
-  if (l.length === 2 && al.length === 2 && l.every(p => al.includes(p))) {
-    g.winner = { team: 'lovers', players: l, text: `Only the Lovers, ${namesList(r, l)}, are left. The Lovers win!` };
+  if (l.length === 2 && al.length <= 3 && l.every(p => al.includes(p))) {
+    g.winner = { team: 'lovers', players: l, text: `The Lovers, ${namesList(r, l)}, made it to the final ${al.length}. The Lovers win!` };
     return g.winner;
   }
   const killers = uniq(al.map(p => teamOf(r, p)).filter(t => KILLER_TEAMS.includes(t)));
