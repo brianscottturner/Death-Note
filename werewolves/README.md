@@ -19,10 +19,17 @@ Once this is on GitHub Pages it lives at `<your pages URL>/werewolves/`.
 3. Pick the speaker phone. Either:
    - on a spare phone or tablet, tap **Join as the speaker phone only**, or
    - the host taps **🔊 Make speaker** next to a player, and that player's phone talks.
-4. The host picks the roles and options, then taps **Deal Roles & Start**.
-5. On the speaker phone, tap **▶ Start narration**. Browsers only allow
+4. The host checks off the cards you're playing with and sets the options.
+   Then shuffle and deal your physical cards. With a Thief, put the 2 leftover
+   cards face down in the middle. Every role has one card, except Villager.
+5. The host taps **Start: everyone enters their card**. Each player privately
+   taps the role on their card. The app won't let two people enter the same
+   role (unless it's Villager). When everyone's done, the host taps
+   **Begin the game**.
+6. On the speaker phone, tap **▶ Start narration**. Browsers only allow
    speech after a tap. Turn the volume up and keep that screen open.
-6. Each player taps **👁 Show my role** to peek at their role privately.
+7. During the game, anyone can tap **👁 Show my role** to check their role and
+   private info (Lovers, targets, potions, messages).
 
 At night, a player's phone only lights up with choices when it's their turn.
 Otherwise it stays dark. Keep phones on silent.

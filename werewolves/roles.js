@@ -1,3 +1,4 @@
+// Every role has one card, except the Villager (`multi`), which has many.
 // Role and team definitions for the custom Werewolves role set.
 // `team` is the team a role plays for. `selectable: false` roles can't be put
 // in the deck directly; they're only created by another role's power
@@ -62,7 +63,7 @@ export const ROLES = {
     desc: "Each morning, after the night's victims are named but before their roles are revealed, you may sacrifice yourself to revive one of them." },
 
   // ---- Werewolf team ----
-  werewolf:    { name: 'Werewolf', team: 'wolves', multi: true,
+  werewolf:    { name: 'Werewolf', team: 'wolves',
     desc: 'Each night, wake up with the werewolves and choose someone to kill.' },
   assassin:    { name: 'Assassin', team: 'wolves',
     desc: "Wakes up with the werewolves. Each night you may also guess a player's role. If you're right, they die. If you're wrong, you die." },

@@ -121,7 +121,7 @@ async function createGame() {
       return {
         code: c, edition: EDITION, createdAt: Date.now(), hostUid: myUid, speakerUid: null,
         status: 'lobby',
-        settings: { roles: { werewolf: 2, seer: 1, villager: 2 }, trueLovers: false, revealRoles: true, discussSec: 180 },
+        settings: { roles: { werewolf: 1, seer: 1, villager: 3 }, trueLovers: false, revealRoles: true, discussSec: 180 },
         players: { p1: { uid: myUid, name } },
       };
     });
@@ -237,10 +237,47 @@ function renderLobby() {
   if (host) {
     html += `<div class="card">
       ${problem ? `<p class="error">${esc(problem)}</p>` : '<p class="hint">Everything is ready!</p>'}
-      <button class="primary" data-act="start" ${problem ? 'disabled' : ''}>Deal Roles & Start</button>
+      <button class="primary" data-act="start" ${problem ? 'disabled' : ''}>Start: everyone enters their card</button>
+      <p class="hint">Shuffle and deal your physical cards first: only the cards checked above${deck.includes('thief') ? ', with the 2 leftover cards face down in the middle for the Thief' : ''}.</p>
     </div>`;
   } else {
     html += `<p class="hint center">Waiting for the host to start the game…</p>`;
+  }
+  $app.innerHTML = html;
+}
+
+/* ---------------- entering physical cards ---------------- */
+
+let pickError = '';
+
+function renderChoosing() {
+  const r = room;
+  const me = myPid();
+  const ids = E.playerIds(r);
+  const picks = obj(r.picks);
+  const done = ids.filter(p => picks[p]).length;
+  const deckRoles = [...new Set(E.deckFromSettings(r.settings))];
+  let html = `<h1 class="title small">🐺 WEREWOLVES</h1>`;
+  if (me) {
+    const mine = picks[me];
+    html += `<div class="card awake"><h2>Which card did you get?</h2>
+      <p class="hint">Keep your screen hidden from the others while you choose.</p>
+      ${pickError ? `<p class="error">${esc(pickError)}</p>` : ''}
+      ${mine ? `<p>✅ You entered <b>${esc(roleName(mine))}</b>. Tap it again to change.</p>` : ''}
+      <div class="choices">${deckRoles.map(ro => `<button class="choice ${mine === ro ? 'selected' : ''}" data-act="pickCard" data-role="${ro}">${esc(roleName(ro))}</button>`).join('')}</div>
+    </div>`;
+  } else {
+    html += `<div class="card"><h2>🔊 Speaker</h2><p>Waiting for everyone to enter their card…</p></div>`;
+  }
+  html += `<div class="card"><p><b>${done} of ${ids.length}</b> players have entered their card.</p>
+    <div class="player-list">${ids.map(p => `<div class="player-row"><span>${esc(pname(p))}</span><span>${picks[p] ? '✅' : '…'}</span></div>`).join('')}</div></div>`;
+  if (isHost()) {
+    html += `<div class="card">
+      <button class="primary" data-act="beginGame" ${done === ids.length ? '' : 'disabled'}>Begin the game</button>
+      <button class="ghost" data-act="backToSetup">Back to role setup</button>
+    </div>`;
+  } else {
+    html += `<p class="hint center">The host starts the game once everyone has entered their card.</p>`;
   }
   $app.innerHTML = html;
 }
@@ -885,7 +922,22 @@ async function handle(act, b) {
       return;
     case 'discuss': if (host) await tx(r => { r.settings.discussSec = Math.min(900, Math.max(30, (r.settings.discussSec || 180) + Number(d.d))); }); return;
     case 'start':
-      if (host) await tx(r => { if (r.status === 'lobby' && !E.validateSetup(r) && r.speakerUid) E.dealGame(r); });
+      if (host) await tx(r => { if (r.status === 'lobby' && !E.validateSetup(r) && r.speakerUid) { r.status = 'choosing'; r.picks = {}; } });
+      return;
+    case 'pickCard': {
+      const me = myPid(), role = d.role;
+      pickError = '';
+      if (obj(room.picks)[me] === role) { await net.set(`${roomPath()}/picks/${me}`, null); return; }
+      await tx(r => { if (r.status === 'choosing' && !E.pickProblem(r, me, role)) { r.picks = obj(r.picks); r.picks[me] = role; } });
+      if (obj(room.picks)[me] !== role) pickError = E.pickProblem(room, me, role) || 'Could not save your card. Try again.';
+      render();
+      return;
+    }
+    case 'beginGame':
+      if (host) await tx(r => { if (r.status === 'choosing' && E.allPicked(r) && !E.validateSetup(r)) { E.dealGame(r); r.picks = null; } });
+      return;
+    case 'backToSetup':
+      if (host) await tx(r => { if (r.status === 'choosing') { r.status = 'lobby'; r.picks = null; } });
       return;
     case 'toggleRole': showRole = !showRole; render(); return;
     case 'field': return onFieldTap(d.key, d.val);
@@ -931,6 +983,7 @@ function render() {
 function renderInner() {
   if (!room) { document.body.classList.remove('night'); return renderLanding(); }
   if (room.status === 'lobby') { document.body.classList.remove('night'); return renderLobby(); }
+  if (room.status === 'choosing') { document.body.classList.remove('night'); return renderChoosing(); }
   renderGame();
   updateCountdowns();
   // The speaker phone resumes narrating by itself after a reload only once tapped (browser rule).
