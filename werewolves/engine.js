@@ -335,8 +335,8 @@ export function stepForm(r, id, pid) {
       P('rec', 'Recruit a Sidekick (optional)', others(r, pid), { min: 0 });
       break;
     case 'assassin':
-      P('gp', "Guess a player's role (optional). If you're wrong, you die.", others(r, pid), { min: 0 });
-      fields.push({ key: 'gr', type: 'role', label: 'Their role is…', min: 1, options: roleOptions(r), showIf: v => !!v.gp });
+      P('gp', "Guess a player's role (optional). If you're wrong, you die.", guessTargets(r, pid), { min: 0 });
+      fields.push({ key: 'gr', type: 'role', label: 'Their role is… (werewolf roles not allowed)', min: 1, options: roleOptions(r, 'wolves'), showIf: v => !!v.gp });
       break;
     case 'juggernaut': {
       const n = juggernautKillsPerNight(r, pid);
@@ -363,8 +363,8 @@ export function stepForm(r, id, pid) {
       P('t', 'Try to kill someone (optional)', others(r, pid), { min: 0 });
       break;
     case 'niceGuesser':
-      P('gp', "Guess a player's role (optional)", others(r, pid), { min: 0 });
-      fields.push({ key: 'gr', type: 'role', label: 'Their role is…', min: 1, options: roleOptions(r), showIf: v => !!v.gp });
+      P('gp', "Guess a player's role (optional). If you're wrong, you die.", guessTargets(r, pid), { min: 0 });
+      fields.push({ key: 'gr', type: 'role', label: 'Their role is… (Villager-team roles not allowed)', min: 1, options: roleOptions(r, 'village'), showIf: v => !!v.gp });
       break;
     case 'seer':
       P('t', 'See whose role?', others(r, pid));
@@ -407,10 +407,17 @@ export function stepForm(r, id, pid) {
   return { info, fields };
 }
 
-function roleOptions(r) {
-  // Every role that could be in play: the deck plus roles created during the game.
+// Roles a guesser may name: every role that could be in play (the deck plus
+// roles created during the game), minus one team. The Assassin can't guess
+// werewolf-team roles; the Nice Guesser can't guess Villager-team roles.
+function roleOptions(r, bannedTeam) {
   const set = uniq([...arr(r.g.deck), ...(arr(r.g.deck).includes('cultist') ? ['follower'] : []), ...(arr(r.g.deck).includes('jackal') ? ['sidekick'] : [])]);
-  return set.map(ro => ({ value: ro, label: roleName(ro) }));
+  return set.filter(ro => ROLES[ro].team !== bannedTeam).map(ro => ({ value: ro, label: roleName(ro) }));
+}
+// Players a guesser may guess on: not themselves, and not anyone whose role
+// is already public (e.g. revealed by the Oracle).
+function guessTargets(r, pid) {
+  return others(r, pid).filter(p => !obj(r.g.publicRoles)[p]);
 }
 
 // Private result a player sees right after submitting (Seer, Wizard, etc.).
@@ -593,6 +600,10 @@ export function finishMorning(r) {
   });
   g.amnesiacGuess = null;
 
+  const sw = arr(g.swap);
+  if (sw.length === 2 && sw.every(p => isAlive(r, p))) {
+    lines.push(`The Swapper has swapped ${pname(r, sw[0])} and ${pname(r, sw[1])}. In today's vote, any votes for ${pname(r, sw[0])} count for ${pname(r, sw[1])}, and the other way around.`);
+  } else if (sw.length === 2) g.swap = null;
   g.hacked = null;
   g.morning = null;
   maybeCheckWin(r);
@@ -685,7 +696,10 @@ export function resolveVote(r) {
       tally[v.t] = (tally[v.t] || 0) + voteWeight(r, p);
     });
     const sw = arr(g.swap);
-    if (sw.length === 2) { const a = tally[sw[0]] || 0; tally[sw[0]] = tally[sw[1]] || 0; tally[sw[1]] = a; }
+    if (sw.length === 2) {
+      const a = tally[sw[0]] || 0; tally[sw[0]] = tally[sw[1]] || 0; tally[sw[1]] = a;
+      lines.push(`Remember, the Swapper swapped ${pname(r, sw[0])} and ${pname(r, sw[1])}.`);
+    }
     const max = Math.max(0, ...Object.values(tally));
     const top = Object.keys(tally).filter(t => tally[t] === max);
     // Totals are public (after any Swapper swap), so sharp players can spot the Mayor's extra votes.
