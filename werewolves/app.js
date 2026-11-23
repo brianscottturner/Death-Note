@@ -391,7 +391,6 @@ function stepTitle(id) {
   if (id === 'werewolves') return '🐺 Werewolves';
   if (id === 'lovers') return '💘 Lovers';
   if (id === 'jackal') return '🦊 Jackal';
-  if (id === 'amnesiacExec') return 'Amnesiac';
   return roleName(id);
 }
 

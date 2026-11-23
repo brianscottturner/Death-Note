@@ -37,8 +37,7 @@ Thief → Cupid → Lovers (first night only) → Medic → Oracle (first night,
 the night after someone newly becomes one) → Glitch →
 Werewolves (with Assassin, Morphling, Cultist, Follower) → Jackal (+ Sidekick)
 → Juggernaut → Arsonist → Vigilante → Sheriff → Nice Guesser → Seer → Wizard →
-Detective → Swapper → Mortician (from night 2) → Amnesiac → Amnesiac (former
-Executioner) → Witch.
+Detective → Swapper → Mortician (from night 2) → Amnesiac → Executioner → Witch.
 
 Every role in the deck is called each night, including the Thief's two unused
 cards and roles whose players are dead. When nobody can answer, the speaker
@@ -71,10 +70,11 @@ them in `engine.js` if you play differently.
   not who voted for whom, so attentive players can try to spot the Mayor's
   extra votes.
 - **Executioner**: if their target dies any way other than a vote, the
-  Executioner becomes an Amnesiac. They wake up on their own, after the
-  original Amnesiac, so the two never see each other. When an Executioner is in
-  the game, this second Amnesiac call happens every night (with a fake pause
-  until it's needed), so it doesn't give anything away.
+  Executioner becomes an Amnesiac. The Executioner has their own turn every
+  night ("Executioner, wake up"), right after the Amnesiac. While their target
+  is alive, their phone just says there's nothing to do. Once they've become an
+  Amnesiac, they make their prediction there, so they never wake with the
+  original Amnesiac.
 - **Oracle** works like the Medic: if someone becomes the Oracle later (an
   Amnesiac copying a dead Oracle), they wake the next night to choose a target.
 - **Jester / Executioner wins** end the game immediately.

@@ -133,7 +133,7 @@ function assignExecTarget(r, pid) {
 // The order roles wake in. `first` = first night only.
 export const STEP_ORDER = ['thief', 'cupid', 'lovers', 'medic', 'oracle', 'glitch', 'werewolves', 'jackal',
   'juggernaut', 'arsonist', 'vigilante', 'sheriff', 'niceGuesser', 'seer', 'wizard', 'detective',
-  'swapper', 'mortician', 'amnesiac', 'amnesiacExec', 'witch'];
+  'swapper', 'mortician', 'amnesiac', 'executioner', 'witch'];
 
 export const STEPS = {
   thief:      { first: true, roles: ['thief'], wake: 'Thief, wake up. Look at your phone and choose one of the two unused roles.', sleep: 'Thief, go back to sleep.' },
@@ -155,8 +155,9 @@ export const STEPS = {
   swapper:    { roles: ['swapper'], wake: "Swapper, wake up. You may choose two players whose votes will be swapped tomorrow.", sleep: 'Swapper, go back to sleep.' },
   mortician:  { roles: ['mortician'], wake: 'Mortician, wake up. Look at your phone to see the roles of the dead.', sleep: 'Mortician, go back to sleep.' },
   amnesiac:   { roles: ['amnesiac'], wake: 'Amnesiac, wake up. Predict who will die tonight.', sleep: 'Amnesiac, go back to sleep.' },
-  // An Executioner who turned into an Amnesiac wakes separately, so they never see the original Amnesiac.
-  amnesiacExec: { roles: ['executioner'], wake: 'Amnesiac, wake up. Predict who will die tonight.', sleep: 'Amnesiac, go back to sleep.' },
+  // The Executioner wakes every night. Once their target dies they're an
+  // Amnesiac, but they keep waking here (never with the original Amnesiac).
+  executioner: { roles: ['executioner'], wake: 'Executioner, wake up. Look at your phone.', sleep: 'Executioner, go back to sleep.' },
   witch:      { roles: ['witch'], wake: "Witch, wake up. Look at your phone to see tonight's victims. You may use your potions.", sleep: 'Witch, go back to sleep.' },
 };
 
@@ -208,7 +209,7 @@ export function stepActors(r, id) {
   if (id === 'lovers') return lovers(r).filter(ok);
   if (id === 'medic' || id === 'oracle') return needsSetup(r, id).filter(ok);
   if (id === 'amnesiac') return ids.filter(p => roleOf(r, p) === 'amnesiac' && !isExecAmnesiac(r, p));
-  if (id === 'amnesiacExec') return ids.filter(p => isExecAmnesiac(r, p));
+  if (id === 'executioner') return ids.filter(p => roleOf(r, p) === 'executioner' || isExecAmnesiac(r, p));
   if (id === 'werewolves') return ids.filter(p => wakesWithWolves(r, p));
   if (id === 'jackal') return ids.filter(p => roleOf(r, p) === 'jackal' || roleOf(r, p) === 'sidekick');
   return ids.filter(p => STEPS[id].roles.includes(roleOf(r, p)));
@@ -325,8 +326,15 @@ export function stepForm(r, id, pid) {
       info.push(dead.length ? dead.map(p => `<b>${pname(r, p)}</b> was ${aRole(roleOf(r, p))}`).join('<br>') : 'Nobody has died yet.');
       break;
     }
+    case 'executioner':
+      if (role === 'executioner') {
+        const t = obj(g.execTarget)[pid];
+        info.push(t ? `Your target, <b>${pname(r, t)}</b>, is still alive. Nothing to do tonight.` : 'Nothing to do tonight.');
+        break;
+      }
+      info.push('Your target died before being voted out, so you are now an Amnesiac.');
+      // falls through to the Amnesiac's prediction
     case 'amnesiac':
-    case 'amnesiacExec':
       P('t', 'Who will die tonight? (optional)', others(r, pid), { min: 0 });
       break;
     case 'witch': {
@@ -439,7 +447,7 @@ export function applyStepEnd(r, id) {
         break;
       case 'niceGuesser': resolveGuess(r, pid, a); break;
       case 'swapper': { const ts = arr(a.ts); g.swap = ts.length === 2 ? ts : null; break; }
-      case 'amnesiac': case 'amnesiacExec': if (a.t) { g.amnesiacGuess = obj(g.amnesiacGuess); g.amnesiacGuess[pid] = a.t; } break;
+      case 'amnesiac': case 'executioner': if (a.t && role === 'amnesiac') { g.amnesiacGuess = obj(g.amnesiacGuess); g.amnesiacGuess[pid] = a.t; } break;
       case 'witch':
         if (a.save && !isUsed(r, pid, 'save')) { used(r, pid).save = true; g.witchSave = a.save; }
         if (a.kill && !isUsed(r, pid, 'kill')) { used(r, pid).kill = true; addKill(r, a.kill, [pid], 'witch'); }
