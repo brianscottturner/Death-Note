@@ -105,9 +105,10 @@ them in `engine.js` if you play differently.
   The Wizard sees the Morphling on the Villager team, and the Detective sees
   them as innocent.
 - **Detective** sees whether a player has ever successfully killed someone.
-- **Swapper** swaps the votes *received* by the two chosen players. The swap is
-  announced to everyone in the morning, before discussion, and again with the
-  vote results. If either player died overnight, the swap is cancelled.
+- **Swapper** swaps the votes *received* by the two chosen players. The swap stays
+  secret until the votes are in. Then the speaker reveals it, before the
+  totals (which already include the swap). If either player died before the
+  vote, the swap is cancelled and never mentioned.
 - **Votes**: most votes wins. A tie is broken randomly by the app. "Skip" is
   only an option on the first day; after that, everyone must vote for someone.
   If Skip wins (or wins a tie) on day 1, nobody is voted out. The total for each player is announced (after any Swapper swap), but

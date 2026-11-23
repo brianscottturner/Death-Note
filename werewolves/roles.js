@@ -48,7 +48,7 @@ export const ROLES = {
   dictator:    { name: 'Dictator', team: 'village',
     desc: 'Your vote never counts, unless you announce you are using your power. Then whoever you vote for is lynched immediately, and you die too.' },
   swapper:     { name: 'Swapper', team: 'village',
-    desc: "Each night you may pick two players. In the morning everyone is told who was swapped, and in that day's vote the votes cast against those two are swapped." },
+    desc: "Each night you may pick two players. In the next day's vote, the votes cast against those two are secretly switched. Nobody finds out until the votes are in." },
   oracle:      { name: 'Oracle', team: 'village',
     desc: "On the first night, choose a target. When you die, your target's role is revealed to everyone." },
   detective:   { name: 'Detective', team: 'village',

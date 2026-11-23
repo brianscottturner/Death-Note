@@ -600,10 +600,6 @@ export function finishMorning(r) {
   });
   g.amnesiacGuess = null;
 
-  const sw = arr(g.swap);
-  if (sw.length === 2 && sw.every(p => isAlive(r, p))) {
-    lines.push(`The Swapper has swapped ${pname(r, sw[0])} and ${pname(r, sw[1])}. In today's vote, any votes for ${pname(r, sw[0])} count for ${pname(r, sw[1])}, and the other way around.`);
-  } else if (sw.length === 2) g.swap = null;
   g.hacked = null;
   g.morning = null;
   maybeCheckWin(r);
@@ -696,9 +692,11 @@ export function resolveVote(r) {
       tally[v.t] = (tally[v.t] || 0) + voteWeight(r, p);
     });
     const sw = arr(g.swap);
-    if (sw.length === 2) {
+    // The swap stays secret until now, so it can catch the town by surprise.
+    // It only happens if both swapped players are still alive.
+    if (sw.length === 2 && sw.every(p => isAlive(r, p))) {
       const a = tally[sw[0]] || 0; tally[sw[0]] = tally[sw[1]] || 0; tally[sw[1]] = a;
-      lines.push(`Remember, the Swapper swapped ${pname(r, sw[0])} and ${pname(r, sw[1])}.`);
+      lines.push(`Surprise! The Swapper swapped ${pname(r, sw[0])} and ${pname(r, sw[1])}. Their votes have been switched.`);
     }
     const max = Math.max(0, ...Object.values(tally));
     const top = Object.keys(tally).filter(t => tally[t] === max);
